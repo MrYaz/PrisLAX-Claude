@@ -3,9 +3,6 @@ import type { ArticleMapping, PriceRow } from '../types';
 let baseMappings: ArticleMapping[] = [];
 let userMappings: ArticleMapping[] = [];
 
-/**
- * Load the base mapping CSV from /public/data/sammanstalld_artikellista.csv
- */
 export async function loadBaseMappings(): Promise<void> {
   try {
     const response = await fetch('/data/sammanstalld_artikellista.csv');
@@ -20,11 +17,6 @@ export async function loadBaseMappings(): Promise<void> {
   }
 }
 
-/**
- * Parse mapping from a CSV/Excel file uploaded by the user.
- * Expected columns: supplier article number, internal article number, product name
- * (flexible column detection)
- */
 export function setUserMappings(mappings: ArticleMapping[]): void {
   userMappings = mappings;
 }
@@ -33,19 +25,13 @@ export function clearUserMappings(): void {
   userMappings = [];
 }
 
-/**
- * Parse a CSV string into ArticleMapping entries.
- * Tries to detect columns by header names.
- */
 export function parseMappingCsv(csvText: string): ArticleMapping[] {
   const lines = csvText.split('\n').map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
 
-  // Detect separator
   const sep = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ',';
   const headers = lines[0].split(sep).map((h) => h.trim().toLowerCase());
 
-  // Find column indices by common header names
   const supplierCol = findColumn(headers, [
     'leverantör', 'leverantor', 'supplier', 'lev',
   ]);
@@ -69,8 +55,6 @@ export function parseMappingCsv(csvText: string): ArticleMapping[] {
     return [];
   }
 
-  // If no explicit supplier article column, use the first "artikelnr"-like column
-  // that is NOT the internal one
   const effectiveSupplierArtCol =
     supplierArtCol !== -1 ? supplierArtCol : findAlternativeArtCol(headers, internArtCol);
 
@@ -113,25 +97,38 @@ function findAlternativeArtCol(headers: string[], excludeCol: number): number {
  * Apply article number mapping to a list of price rows.
  * User mappings override base mappings.
  *
+ * When a supplierName is given, mappings for that supplier are tried first
+ * (exact match on supplier + article number), then fallback to all mappings.
+ *
  * Strategy:
- * 1. Exact match on supplier article number (ertArtikelnr)
- * 2. Fuzzy match on product name (benamning)
- * 3. Leave empty if no match
+ * 1. Exact match on supplier + supplier article number
+ * 2. Exact match on supplier article number (any supplier)
+ * 3. Match on product name
+ * 4. Leave empty if no match
  */
-export function applyMappings(rows: PriceRow[]): PriceRow[] {
-  // Merge mappings: user overrides base
-  const combined = buildMappingIndex();
+export function applyMappings(rows: PriceRow[], supplierName: string): PriceRow[] {
+  const combined = buildMappingIndex(supplierName);
 
   return rows.map((row) => {
-    if (row.vartArtikelnr) return row; // Already mapped
+    if (row.vartArtikelnr) return row;
 
-    // 1. Exact match on supplier article number
-    const byArt = combined.bySupplierArt.get(row.ertArtikelnr.toLowerCase());
-    if (byArt) {
-      return { ...row, vartArtikelnr: byArt };
+    const artKey = row.ertArtikelnr.toLowerCase();
+
+    // 1. Exact match on supplier-specific article number
+    if (artKey) {
+      const bySupplierArt = combined.bySupplierSpecificArt.get(artKey);
+      if (bySupplierArt) {
+        return { ...row, vartArtikelnr: bySupplierArt };
+      }
+
+      // 2. Exact match on article number (any supplier)
+      const byArt = combined.bySupplierArt.get(artKey);
+      if (byArt) {
+        return { ...row, vartArtikelnr: byArt };
+      }
     }
 
-    // 2. Match on product name (case-insensitive contains)
+    // 3. Match on product name
     if (row.benamning) {
       const nameLower = row.benamning.toLowerCase();
       for (const [mapName, internArt] of combined.byName) {
@@ -141,22 +138,27 @@ export function applyMappings(rows: PriceRow[]): PriceRow[] {
       }
     }
 
-    // 3. No match
     return row;
   });
 }
 
-function buildMappingIndex(): {
+function buildMappingIndex(supplierName: string): {
+  bySupplierSpecificArt: Map<string, string>;
   bySupplierArt: Map<string, string>;
   byName: Map<string, string>;
 } {
+  const bySupplierSpecificArt = new Map<string, string>();
   const bySupplierArt = new Map<string, string>();
   const byName = new Map<string, string>();
+  const supplierLower = supplierName.toLowerCase();
 
   // Base mappings first
   for (const m of baseMappings) {
     if (m.supplierArtikelnr) {
       bySupplierArt.set(m.supplierArtikelnr.toLowerCase(), m.internArtikelnr);
+      if (supplierLower && m.supplier.toLowerCase() === supplierLower) {
+        bySupplierSpecificArt.set(m.supplierArtikelnr.toLowerCase(), m.internArtikelnr);
+      }
     }
     if (m.productName) {
       byName.set(m.productName.toLowerCase(), m.internArtikelnr);
@@ -167,11 +169,14 @@ function buildMappingIndex(): {
   for (const m of userMappings) {
     if (m.supplierArtikelnr) {
       bySupplierArt.set(m.supplierArtikelnr.toLowerCase(), m.internArtikelnr);
+      if (supplierLower && m.supplier.toLowerCase() === supplierLower) {
+        bySupplierSpecificArt.set(m.supplierArtikelnr.toLowerCase(), m.internArtikelnr);
+      }
     }
     if (m.productName) {
       byName.set(m.productName.toLowerCase(), m.internArtikelnr);
     }
   }
 
-  return { bySupplierArt, byName };
+  return { bySupplierSpecificArt, bySupplierArt, byName };
 }

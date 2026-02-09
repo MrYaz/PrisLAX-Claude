@@ -298,3 +298,71 @@
 .file-upload {
   display: inline-block;
 }
+
+/* ===== Supplier Select ===== */
+.supplier-select {
+  margin-bottom: 1rem;
+}
+
+.supplier-select label {
+  display: block;
+  font-size: 0.8rem;
+  color: #555;
+  font-weight: 500;
+  margin-bottom: 0.3rem;
+}
+
+.supplier-select select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  min-width: 220px;
+  background: #fff;
+}
+
+.supplier-select select:focus {
+  outline: none;
+  border-color: #2c3e50;
+}
+
+.supplier-select select:disabled {
+  background: #eee;
+}
+
+/* ===== Hint Message ===== */
+.hint-message {
+  font-size: 0.85rem;
+  color: #7f8c8d;
+  margin-bottom: 0.5rem;
+  font-style: italic;
+}
+
+/* ===== Stop Button ===== */
+.progress-section {
+  margin: 1.5rem 0;
+}
+
+.stop-btn {
+  margin-top: 0.5rem;
+  padding: 0.5rem 1.2rem;
+  background: #e74c3c;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.stop-btn:hover {
+  background: #c0392b;
+}
+
+/* ===== Partial Results ===== */
+.partial-message {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e67e22;
+}

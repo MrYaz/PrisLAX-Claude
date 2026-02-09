@@ -4,12 +4,11 @@ import { extractFromText } from './ai';
 
 const MAX_CHARS_PER_CHUNK = 8000;
 
-/**
- * Process a Word (.docx) file: extract text, send to AI for extraction.
- */
 export async function processWord(
   file: File,
-  onProgress: (info: ProgressInfo) => void
+  supplierHint: string,
+  onProgress: (info: ProgressInfo) => void,
+  signal: AbortSignal
 ): Promise<RawExtractedRow[]> {
   onProgress({
     message: 'Läser Word-dokument...',
@@ -26,16 +25,14 @@ export async function processWord(
     return [];
   }
 
-  // Chunk by paragraphs if large
   if (text.length <= MAX_CHARS_PER_CHUNK) {
     onProgress({ message: 'Analyserar Word-dokument...', current: 0, total: 1 });
     const contextHint = `This text comes from a Word document named "${file.name}". Extract all product/price data you can find.`;
-    const rows = await extractFromText(text, contextHint);
+    const rows = await extractFromText(text, supplierHint, contextHint);
     onProgress({ message: 'Word-dokument klart', current: 1, total: 1 });
     return rows;
   }
 
-  // Split into chunks
   const paragraphs = text.split('\n');
   const chunks: string[] = [];
   let currentChunk = '';
@@ -54,6 +51,15 @@ export async function processWord(
   let hasSucceeded = false;
 
   for (let i = 0; i < totalChunks; i++) {
+    if (signal.aborted) {
+      onProgress({
+        message: `Stoppad efter del ${i} av ${totalChunks}`,
+        current: i,
+        total: totalChunks,
+      });
+      break;
+    }
+
     onProgress({
       message: `Behandlar del ${i + 1} av ${totalChunks} från Word-dokument`,
       current: i,
@@ -62,7 +68,7 @@ export async function processWord(
 
     const contextHint = `This text comes from a Word document named "${file.name}", part ${i + 1} of ${totalChunks}.`;
     try {
-      const rows = await extractFromText(chunks[i], contextHint);
+      const rows = await extractFromText(chunks[i], supplierHint, contextHint);
       allRows.push(...rows);
       hasSucceeded = true;
     } catch (err) {

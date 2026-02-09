@@ -1,5 +1,6 @@
 import type { RawExtractedRow, ProgressInfo, SupportedFileType } from '../types';
 import { validateApiKey } from './ai';
+import { getExtractionHint } from '../config/suppliers';
 import { processPdf } from './pdfProcessor';
 import { processExcel } from './excelProcessor';
 import { processWord } from './wordProcessor';
@@ -18,7 +19,6 @@ export function detectFileType(file: File): SupportedFileType | null {
   if (WORD_EXTENSIONS.includes(ext)) return 'word';
   if (IMAGE_EXTENSIONS.includes(ext)) return 'image';
 
-  // Fallback: check MIME type
   if (file.type === 'application/pdf') return 'pdf';
   if (file.type.includes('spreadsheet') || file.type.includes('excel')) return 'excel';
   if (file.type.includes('word') || file.type.includes('document')) return 'word';
@@ -29,10 +29,13 @@ export function detectFileType(file: File): SupportedFileType | null {
 
 /**
  * Route a file to the appropriate processor based on type.
+ * Uses supplier profile to get extraction hints for the AI.
  */
 export async function processFile(
   file: File,
-  onProgress: (info: ProgressInfo) => void
+  supplierId: string,
+  onProgress: (info: ProgressInfo) => void,
+  signal: AbortSignal
 ): Promise<RawExtractedRow[]> {
   const fileType = detectFileType(file);
 
@@ -42,17 +45,18 @@ export async function processFile(
     );
   }
 
-  // Validate API key before starting any processing
   validateApiKey();
+
+  const supplierHint = getExtractionHint(supplierId, fileType);
 
   switch (fileType) {
     case 'pdf':
-      return processPdf(file, onProgress);
+      return processPdf(file, supplierHint, onProgress, signal);
     case 'excel':
-      return processExcel(file, onProgress);
+      return processExcel(file, supplierHint, onProgress, signal);
     case 'word':
-      return processWord(file, onProgress);
+      return processWord(file, supplierHint, onProgress, signal);
     case 'image':
-      return processImage(file, onProgress);
+      return processImage(file, supplierHint, onProgress, signal);
   }
 }

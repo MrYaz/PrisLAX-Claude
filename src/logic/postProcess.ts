@@ -15,7 +15,8 @@ import { applyPricing } from './pricing';
  */
 export function postProcess(
   rawRows: RawExtractedRow[],
-  pricingSettings: PricingSettings
+  pricingSettings: PricingSettings,
+  supplierName: string
 ): PriceRow[] {
   // 1. Merge accessories
   const merged = mergeAccessories(rawRows);
@@ -33,8 +34,8 @@ export function postProcess(
     nettoprisSEK: raw.pris,
   }));
 
-  // 3. Apply article number mappings
-  rows = applyMappings(rows);
+  // 3. Apply article number mappings (supplier-aware)
+  rows = applyMappings(rows, supplierName);
 
   // 4. Apply pricing
   rows = applyPricing(rows, pricingSettings);

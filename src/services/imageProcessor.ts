@@ -1,12 +1,11 @@
 import type { RawExtractedRow, ProgressInfo } from '../types';
 import { extractFromImage } from './ai';
 
-/**
- * Process an image file (JPG, PNG, etc.): send directly to AI for extraction.
- */
 export async function processImage(
   file: File,
-  onProgress: (info: ProgressInfo) => void
+  supplierHint: string,
+  onProgress: (info: ProgressInfo) => void,
+  _signal: AbortSignal
 ): Promise<RawExtractedRow[]> {
   onProgress({
     message: 'Analyserar bild...',
@@ -18,8 +17,7 @@ export async function processImage(
   const mimeType = file.type || 'image/png';
   const contextHint = `This is an image file named "${file.name}". It likely contains a price list or product table. Extract all product data visible.`;
 
-  // Single image — let the error propagate so the user sees it
-  const rows = await extractFromImage(base64, mimeType, contextHint);
+  const rows = await extractFromImage(base64, mimeType, supplierHint, contextHint);
   onProgress({ message: 'Bild analyserad', current: 1, total: 1 });
   return rows;
 }
@@ -29,7 +27,6 @@ function fileToBase64(file: File): Promise<string> {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      // Strip data URL prefix
       const base64 = dataUrl.replace(/^data:[^;]+;base64,/, '');
       resolve(base64);
     };
