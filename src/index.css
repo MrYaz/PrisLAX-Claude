@@ -1,0 +1,26 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background-color: #ffffff;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button {
+  font-family: inherit;
+}
+
+input {
+  font-family: inherit;
+}
