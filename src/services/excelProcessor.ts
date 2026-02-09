@@ -2,7 +2,6 @@ import * as XLSX from 'xlsx';
 import type { RawExtractedRow, ProgressInfo } from '../types';
 import { extractFromText } from './ai';
 
-/** Sheet names that are clearly NOT product categories */
 const NON_CATEGORY_NAMES = new Set([
   'info', 'villkor', 'blad1', 'blad2', 'blad3',
   'sheet1', 'sheet2', 'sheet3',
@@ -13,12 +12,11 @@ const NON_CATEGORY_NAMES = new Set([
 
 const MAX_ROWS_PER_CHUNK = 80;
 
-/**
- * Process an Excel file: iterate sheets, convert to text, extract via AI.
- */
 export async function processExcel(
   file: File,
-  onProgress: (info: ProgressInfo) => void
+  supplierHint: string,
+  onProgress: (info: ProgressInfo) => void,
+  signal: AbortSignal
 ): Promise<RawExtractedRow[]> {
   const arrayBuffer = await file.arrayBuffer();
   const workbook = XLSX.read(arrayBuffer, { type: 'array' });
@@ -36,6 +34,15 @@ export async function processExcel(
   let errorCount = 0;
 
   for (let i = 0; i < totalSheets; i++) {
+    if (signal.aborted) {
+      onProgress({
+        message: `Stoppad efter flik ${i} av ${totalSheets}`,
+        current: i,
+        total: totalSheets,
+      });
+      break;
+    }
+
     const sheetName = sheetNames[i];
     const sheet = workbook.Sheets[sheetName];
 
@@ -48,12 +55,12 @@ export async function processExcel(
     const isLikelyCategory = !NON_CATEGORY_NAMES.has(sheetName.toLowerCase().trim());
     const sheetText = sheetToText(sheet);
 
-    if (!sheetText.trim()) continue; // Skip empty sheets
+    if (!sheetText.trim()) continue;
 
     const processChunk = async (text: string, label: string) => {
       const contextHint = buildContextHint(sheetName, isLikelyCategory, file.name);
       try {
-        const rows = await extractFromText(text, contextHint);
+        const rows = await extractFromText(text, supplierHint, contextHint);
         allRows.push(...rows);
         hasSucceeded = true;
       } catch (err) {
@@ -66,7 +73,6 @@ export async function processExcel(
       }
     };
 
-    // Chunk large sheets
     const lines = sheetText.split('\n');
     const headerLine = lines[0] || '';
     const dataLines = lines.slice(1);
@@ -76,6 +82,8 @@ export async function processExcel(
     } else {
       const totalChunks = Math.ceil(dataLines.length / MAX_ROWS_PER_CHUNK);
       for (let c = 0; c < totalChunks; c++) {
+        if (signal.aborted) break;
+
         const start = c * MAX_ROWS_PER_CHUNK;
         const end = Math.min(start + MAX_ROWS_PER_CHUNK, dataLines.length);
         const chunkLines = [headerLine, ...dataLines.slice(start, end)];
@@ -91,11 +99,13 @@ export async function processExcel(
       }
     }
 
-    onProgress({
-      message: `Flik "${sheetName}" klar (${i + 1} av ${totalSheets})`,
-      current: i + 1,
-      total: totalSheets,
-    });
+    if (!signal.aborted) {
+      onProgress({
+        message: `Flik "${sheetName}" klar (${i + 1} av ${totalSheets})`,
+        current: i + 1,
+        total: totalSheets,
+      });
+    }
   }
 
   if (errorCount > 0) {
@@ -119,10 +129,6 @@ function buildContextHint(sheetName: string, isLikelyCategory: boolean, fileName
   return hint;
 }
 
-/**
- * Convert a sheet to a tab-separated text representation.
- * Preserves layout structure so AI can understand the spatial arrangement.
- */
 function sheetToText(sheet: XLSX.WorkSheet): string {
   const ref = sheet['!ref'];
   if (!ref) return '';

@@ -4,7 +4,6 @@ import type { RawExtractedRow } from '../types';
 let genAI: GoogleGenerativeAI | null = null;
 
 function getApiKey(): string {
-  // VITE_ env vars are embedded at build time
   const key = import.meta.env.VITE_API_KEY as string | undefined;
   if (!key) {
     throw new Error(
@@ -14,7 +13,6 @@ function getApiKey(): string {
   return key;
 }
 
-/** Check that an API key is configured. Throws with a user-friendly message if not. */
 export function validateApiKey(): void {
   getApiKey();
 }
@@ -53,19 +51,33 @@ Return ONLY a JSON array. No markdown, no explanation. Example:
 If no products found, return: []`;
 
 /**
+ * Build the full prompt by combining the base extraction prompt,
+ * supplier-specific hint, and page/sheet context hint.
+ */
+function buildPrompt(supplierHint: string, contextHint: string): string {
+  const parts = [EXTRACTION_PROMPT];
+  if (supplierHint) {
+    parts.push(`\nSUPPLIER-SPECIFIC GUIDANCE:\n${supplierHint}`);
+  }
+  if (contextHint) {
+    parts.push(`\nAdditional context: ${contextHint}`);
+  }
+  return parts.join('\n');
+}
+
+/**
  * Extract product rows from an image (rendered PDF page, photo, etc.)
  */
 export async function extractFromImage(
   imageBase64: string,
   mimeType: string,
-  contextHint?: string
+  supplierHint: string,
+  contextHint: string
 ): Promise<RawExtractedRow[]> {
   const client = getClient();
   const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-  const prompt = contextHint
-    ? `${EXTRACTION_PROMPT}\n\nAdditional context: ${contextHint}`
-    : EXTRACTION_PROMPT;
+  const prompt = buildPrompt(supplierHint, contextHint);
 
   const imagePart: Part = {
     inlineData: {
@@ -84,15 +96,13 @@ export async function extractFromImage(
  */
 export async function extractFromText(
   textContent: string,
-  contextHint?: string
+  supplierHint: string,
+  contextHint: string
 ): Promise<RawExtractedRow[]> {
   const client = getClient();
   const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-  const prompt = contextHint
-    ? `${EXTRACTION_PROMPT}\n\nAdditional context: ${contextHint}`
-    : EXTRACTION_PROMPT;
-
+  const prompt = buildPrompt(supplierHint, contextHint);
   const fullPrompt = `${prompt}\n\nHere is the document content:\n\n${textContent}`;
 
   const result = await model.generateContent(fullPrompt);
@@ -101,7 +111,6 @@ export async function extractFromText(
 }
 
 function parseAIResponse(text: string): RawExtractedRow[] {
-  // Strip markdown code fences if present
   let cleaned = text;
   if (cleaned.startsWith('```')) {
     cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');

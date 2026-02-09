@@ -63,6 +63,16 @@ export interface PricingSettings {
 /** Supported file types */
 export type SupportedFileType = 'pdf' | 'excel' | 'word' | 'image';
 
+/** Supplier-specific extraction profile */
+export interface SupplierProfile {
+  id: string;
+  name: string;
+  /** Supplier-specific hints per file type that get appended to the AI prompt */
+  extractionHints: Partial<Record<SupportedFileType, string>>;
+  /** Default hint used when no file-type-specific hint exists */
+  defaultHint: string;
+}
+
 export const OUTPUT_COLUMNS = [
   'Ert Artikelnr',
   'Vårt Artikelnr',
