@@ -29,6 +29,9 @@ export async function processPdf(
   });
 
   const allRows: RawExtractedRow[] = [];
+  let hasSucceeded = false;
+  let lastError: Error | null = null;
+  let errorCount = 0;
 
   // Process in chunks of PAGES_PER_CHUNK
   for (let startPage = 1; startPage <= totalPages; startPage += PAGES_PER_CHUNK) {
@@ -48,9 +51,15 @@ export async function processPdf(
       try {
         const rows = await extractFromImage(imageBase64, 'image/png', contextHint);
         allRows.push(...rows);
+        hasSucceeded = true;
       } catch (err) {
-        console.error(`Error extracting from page ${pageNum}:`, err);
-        // Continue with remaining pages
+        errorCount++;
+        lastError = err instanceof Error ? err : new Error(String(err));
+        // If we haven't had a single success yet, this is likely a config/auth error — propagate it
+        if (!hasSucceeded) {
+          throw new Error(`AI-anrop misslyckades (sida ${pageNum}): ${lastError.message}`);
+        }
+        console.warn(`Sida ${pageNum} misslyckades, fortsätter: ${lastError.message}`);
       }
     }
 
@@ -59,6 +68,10 @@ export async function processPdf(
       current: endPage,
       total: totalPages,
     });
+  }
+
+  if (errorCount > 0) {
+    console.warn(`PDF-behandling klar med ${errorCount} misslyckade sidor av ${totalPages}`);
   }
 
   return allRows;

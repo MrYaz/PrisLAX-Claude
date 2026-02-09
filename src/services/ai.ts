@@ -14,6 +14,11 @@ function getApiKey(): string {
   return key;
 }
 
+/** Check that an API key is configured. Throws with a user-friendly message if not. */
+export function validateApiKey(): void {
+  getApiKey();
+}
+
 function getClient(): GoogleGenerativeAI {
   if (!genAI) {
     genAI = new GoogleGenerativeAI(getApiKey());

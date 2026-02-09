@@ -1,4 +1,5 @@
 import type { RawExtractedRow, ProgressInfo, SupportedFileType } from '../types';
+import { validateApiKey } from './ai';
 import { processPdf } from './pdfProcessor';
 import { processExcel } from './excelProcessor';
 import { processWord } from './wordProcessor';
@@ -40,6 +41,9 @@ export async function processFile(
       `Filtypen "${file.name}" stöds inte. Använd PDF, Excel, Word eller bild.`
     );
   }
+
+  // Validate API key before starting any processing
+  validateApiKey();
 
   switch (fileType) {
     case 'pdf':

@@ -18,15 +18,10 @@ export async function processImage(
   const mimeType = file.type || 'image/png';
   const contextHint = `This is an image file named "${file.name}". It likely contains a price list or product table. Extract all product data visible.`;
 
-  try {
-    const rows = await extractFromImage(base64, mimeType, contextHint);
-    onProgress({ message: 'Bild analyserad', current: 1, total: 1 });
-    return rows;
-  } catch (err) {
-    console.error('Error extracting from image:', err);
-    onProgress({ message: 'Fel vid bildanalys', current: 1, total: 1 });
-    return [];
-  }
+  // Single image — let the error propagate so the user sees it
+  const rows = await extractFromImage(base64, mimeType, contextHint);
+  onProgress({ message: 'Bild analyserad', current: 1, total: 1 });
+  return rows;
 }
 
 function fileToBase64(file: File): Promise<string> {

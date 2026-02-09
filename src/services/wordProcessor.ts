@@ -51,6 +51,7 @@ export async function processWord(
 
   const allRows: RawExtractedRow[] = [];
   const totalChunks = chunks.length;
+  let hasSucceeded = false;
 
   for (let i = 0; i < totalChunks; i++) {
     onProgress({
@@ -63,8 +64,13 @@ export async function processWord(
     try {
       const rows = await extractFromText(chunks[i], contextHint);
       allRows.push(...rows);
+      hasSucceeded = true;
     } catch (err) {
-      console.error(`Error extracting from Word chunk ${i + 1}:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!hasSucceeded) {
+        throw new Error(`AI-anrop misslyckades (Word del ${i + 1}): ${msg}`);
+      }
+      console.warn(`Word del ${i + 1} misslyckades, fortsätter: ${msg}`);
     }
   }
 

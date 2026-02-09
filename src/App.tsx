@@ -11,6 +11,10 @@ import { ProgressBar } from './components/ProgressBar';
 import { ResultTable } from './components/ResultTable';
 import './App.css';
 
+function hasApiKey(): boolean {
+  return Boolean(import.meta.env.VITE_API_KEY);
+}
+
 export default function App() {
   const [rows, setRows] = useState<PriceRow[]>([]);
   const [processing, setProcessing] = useState(false);
@@ -81,6 +85,8 @@ export default function App() {
     exportToExcel(rows, `${baseName}_prislista.xlsx`);
   }, [rows, fileName]);
 
+  const apiKeyMissing = !hasApiKey();
+
   return (
     <div className="app">
       <header className="app-header">
@@ -89,9 +95,15 @@ export default function App() {
       </header>
 
       <main className="app-main">
+        {apiKeyMissing && (
+          <div className="error-message">
+            API-nyckel saknas. Sätt miljövariabeln <code>VITE_API_KEY</code> och bygg om appen.
+          </div>
+        )}
+
         <section className="controls-section">
           <div className="controls-row">
-            <FileUpload onFileSelected={handleFileSelected} disabled={processing} />
+            <FileUpload onFileSelected={handleFileSelected} disabled={processing || apiKeyMissing} />
             <MappingUpload
               hasMappings={userMappingCount > 0}
               onMappingsChanged={setUserMappingCount}

@@ -32,6 +32,8 @@ export async function processExcel(
   });
 
   const allRows: RawExtractedRow[] = [];
+  let hasSucceeded = false;
+  let errorCount = 0;
 
   for (let i = 0; i < totalSheets; i++) {
     const sheetName = sheetNames[i];
@@ -48,22 +50,30 @@ export async function processExcel(
 
     if (!sheetText.trim()) continue; // Skip empty sheets
 
+    const processChunk = async (text: string, label: string) => {
+      const contextHint = buildContextHint(sheetName, isLikelyCategory, file.name);
+      try {
+        const rows = await extractFromText(text, contextHint);
+        allRows.push(...rows);
+        hasSucceeded = true;
+      } catch (err) {
+        errorCount++;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!hasSucceeded) {
+          throw new Error(`AI-anrop misslyckades (${label}): ${msg}`);
+        }
+        console.warn(`${label} misslyckades, fortsätter: ${msg}`);
+      }
+    };
+
     // Chunk large sheets
     const lines = sheetText.split('\n');
     const headerLine = lines[0] || '';
     const dataLines = lines.slice(1);
 
     if (dataLines.length <= MAX_ROWS_PER_CHUNK) {
-      // Small enough to process in one go
-      const contextHint = buildContextHint(sheetName, isLikelyCategory, file.name);
-      try {
-        const rows = await extractFromText(sheetText, contextHint);
-        allRows.push(...rows);
-      } catch (err) {
-        console.error(`Error extracting from sheet "${sheetName}":`, err);
-      }
+      await processChunk(sheetText, `flik "${sheetName}"`);
     } else {
-      // Chunk large sheet
       const totalChunks = Math.ceil(dataLines.length / MAX_ROWS_PER_CHUNK);
       for (let c = 0; c < totalChunks; c++) {
         const start = c * MAX_ROWS_PER_CHUNK;
@@ -77,13 +87,7 @@ export async function processExcel(
           total: totalSheets,
         });
 
-        const contextHint = buildContextHint(sheetName, isLikelyCategory, file.name);
-        try {
-          const rows = await extractFromText(chunkText, contextHint);
-          allRows.push(...rows);
-        } catch (err) {
-          console.error(`Error extracting chunk ${c + 1} from sheet "${sheetName}":`, err);
-        }
+        await processChunk(chunkText, `flik "${sheetName}" rad ${start + 1}–${end}`);
       }
     }
 
@@ -92,6 +96,10 @@ export async function processExcel(
       current: i + 1,
       total: totalSheets,
     });
+  }
+
+  if (errorCount > 0) {
+    console.warn(`Excel-behandling klar med ${errorCount} misslyckade delar`);
   }
 
   return allRows;
