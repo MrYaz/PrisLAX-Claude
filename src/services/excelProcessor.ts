@@ -12,7 +12,7 @@ const NON_CATEGORY_NAMES = new Set([
 ]);
 
 const MAX_ROWS_PER_CHUNK = 80;
-const CONCURRENCY = 4;
+const CONCURRENCY = 2;
 
 function updateStats(stats: ExtractionStats, rows: RawExtractedRow[], label: string): void {
   const articles = rows.filter((r) => !r.isAccessory).length;

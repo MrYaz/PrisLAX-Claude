@@ -81,6 +81,29 @@ function buildPrompt(supplierHint: string, contextHint: string): string {
   return parts.join('\n');
 }
 
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 2000;
+
+/**
+ * Retry a Gemini API call with exponential backoff on 429 (rate limit) errors.
+ */
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const is429 = lastError.message.includes('429') || lastError.message.includes('Resource exhausted');
+      if (!is429 || attempt === MAX_RETRIES) throw lastError;
+      const delay = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+      console.warn(`Rate limited (429), retry ${attempt + 1}/${MAX_RETRIES} in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Extract product rows from an image (rendered PDF page, photo, etc.)
  */
@@ -90,21 +113,23 @@ export async function extractFromImage(
   supplierHint: string,
   contextHint: string
 ): Promise<RawExtractedRow[]> {
-  const client = getClient();
-  const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  return withRetry(async () => {
+    const client = getClient();
+    const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-  const prompt = buildPrompt(supplierHint, contextHint);
+    const prompt = buildPrompt(supplierHint, contextHint);
 
-  const imagePart: Part = {
-    inlineData: {
-      mimeType,
-      data: imageBase64,
-    },
-  };
+    const imagePart: Part = {
+      inlineData: {
+        mimeType,
+        data: imageBase64,
+      },
+    };
 
-  const result = await model.generateContent([prompt, imagePart]);
-  const text = result.response.text().trim();
-  return parseAIResponse(text);
+    const result = await model.generateContent([prompt, imagePart]);
+    const text = result.response.text().trim();
+    return parseAIResponse(text);
+  });
 }
 
 /**
@@ -115,15 +140,17 @@ export async function extractFromText(
   supplierHint: string,
   contextHint: string
 ): Promise<RawExtractedRow[]> {
-  const client = getClient();
-  const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  return withRetry(async () => {
+    const client = getClient();
+    const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-  const prompt = buildPrompt(supplierHint, contextHint);
-  const fullPrompt = `${prompt}\n\nHere is the document content:\n\n${textContent}`;
+    const prompt = buildPrompt(supplierHint, contextHint);
+    const fullPrompt = `${prompt}\n\nHere is the document content:\n\n${textContent}`;
 
-  const result = await model.generateContent(fullPrompt);
-  const text = result.response.text().trim();
-  return parseAIResponse(text);
+    const result = await model.generateContent(fullPrompt);
+    const text = result.response.text().trim();
+    return parseAIResponse(text);
+  });
 }
 
 function parseAIResponse(text: string): RawExtractedRow[] {

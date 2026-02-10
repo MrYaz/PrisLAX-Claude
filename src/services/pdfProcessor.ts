@@ -9,7 +9,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 const RENDER_SCALE = 2;
-const CONCURRENCY = 4;
+const CONCURRENCY = 2;
 
 function updateStats(stats: ExtractionStats, rows: RawExtractedRow[], label: string): void {
   const articles = rows.filter((r) => !r.isAccessory).length;

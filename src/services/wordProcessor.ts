@@ -4,7 +4,7 @@ import { extractFromText } from './ai';
 import { runParallel, type ParallelTask } from './parallelRunner';
 
 const MAX_CHARS_PER_CHUNK = 8000;
-const CONCURRENCY = 4;
+const CONCURRENCY = 2;
 
 function updateStats(stats: ExtractionStats, rows: RawExtractedRow[], label: string): void {
   const articles = rows.filter((r) => !r.isAccessory).length;

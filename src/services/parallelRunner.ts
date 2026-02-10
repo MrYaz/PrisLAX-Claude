@@ -61,7 +61,13 @@ export async function runParallel<T>(
   }
 
   const workerCount = Math.min(concurrency, tasks.length);
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  // Stagger worker starts by 500ms each to avoid burst API calls
+  const STAGGER_MS = 500;
+  await Promise.all(
+    Array.from({ length: workerCount }, (_, i) =>
+      new Promise<void>((resolve) => setTimeout(resolve, i * STAGGER_MS)).then(() => worker())
+    )
+  );
 
   return { succeeded, failed, firstError };
 }
