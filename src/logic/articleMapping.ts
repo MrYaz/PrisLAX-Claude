@@ -112,16 +112,16 @@ export function applyMappings(rows: PriceRow[], supplierName: string): PriceRow[
   return rows.map((row) => {
     if (row.vartArtikelnr) return row;
 
-    const artKey = row.ertArtikelnr.toLowerCase();
+    const artKey = normalizeArtNr(row.ertArtikelnr);
 
-    // 1. Exact match on supplier-specific article number
+    // 1. Match on supplier-specific article number
     if (artKey) {
       const bySupplierArt = combined.bySupplierSpecificArt.get(artKey);
       if (bySupplierArt) {
         return { ...row, vartArtikelnr: bySupplierArt };
       }
 
-      // 2. Exact match on article number (any supplier)
+      // 2. Match on article number (any supplier)
       const byArt = combined.bySupplierArt.get(artKey);
       if (byArt) {
         return { ...row, vartArtikelnr: byArt };
@@ -142,6 +142,26 @@ export function applyMappings(rows: PriceRow[], supplierName: string): PriceRow[
   });
 }
 
+/**
+ * Partial supplier name match: "Profsafe" matches "Profsafe AB",
+ * "Business To Nordic" matches "BTN AB", etc.
+ * Both directions checked (contains).
+ */
+function supplierMatches(mappingSupplier: string, selectedSupplier: string): boolean {
+  if (!mappingSupplier || !selectedSupplier) return false;
+  const a = mappingSupplier.toLowerCase().trim();
+  const b = selectedSupplier.toLowerCase().trim();
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+/**
+ * Normalize an article number for flexible matching.
+ * Strips common suffixes/noise: trailing *, whitespace, dashes at end.
+ */
+function normalizeArtNr(art: string): string {
+  return art.toLowerCase().replace(/[\s*]+$/g, '').trim();
+}
+
 function buildMappingIndex(supplierName: string): {
   bySupplierSpecificArt: Map<string, string>;
   bySupplierArt: Map<string, string>;
@@ -150,14 +170,13 @@ function buildMappingIndex(supplierName: string): {
   const bySupplierSpecificArt = new Map<string, string>();
   const bySupplierArt = new Map<string, string>();
   const byName = new Map<string, string>();
-  const supplierLower = supplierName.toLowerCase();
 
-  // Base mappings first
-  for (const m of baseMappings) {
+  function indexMapping(m: ArticleMapping): void {
     if (m.supplierArtikelnr) {
-      bySupplierArt.set(m.supplierArtikelnr.toLowerCase(), m.internArtikelnr);
-      if (supplierLower && m.supplier.toLowerCase() === supplierLower) {
-        bySupplierSpecificArt.set(m.supplierArtikelnr.toLowerCase(), m.internArtikelnr);
+      const key = normalizeArtNr(m.supplierArtikelnr);
+      bySupplierArt.set(key, m.internArtikelnr);
+      if (supplierName && supplierMatches(m.supplier, supplierName)) {
+        bySupplierSpecificArt.set(key, m.internArtikelnr);
       }
     }
     if (m.productName) {
@@ -165,18 +184,9 @@ function buildMappingIndex(supplierName: string): {
     }
   }
 
-  // User mappings override
-  for (const m of userMappings) {
-    if (m.supplierArtikelnr) {
-      bySupplierArt.set(m.supplierArtikelnr.toLowerCase(), m.internArtikelnr);
-      if (supplierLower && m.supplier.toLowerCase() === supplierLower) {
-        bySupplierSpecificArt.set(m.supplierArtikelnr.toLowerCase(), m.internArtikelnr);
-      }
-    }
-    if (m.productName) {
-      byName.set(m.productName.toLowerCase(), m.internArtikelnr);
-    }
-  }
+  // Base mappings first, then user mappings override
+  for (const m of baseMappings) indexMapping(m);
+  for (const m of userMappings) indexMapping(m);
 
   return { bySupplierSpecificArt, bySupplierArt, byName };
 }
