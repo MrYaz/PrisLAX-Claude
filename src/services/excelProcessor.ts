@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { RawExtractedRow, ProgressInfo } from '../types';
+import type { RawExtractedRow, ProgressInfo, ExtractionStats } from '../types';
 import { extractFromText } from './ai';
 
 const NON_CATEGORY_NAMES = new Set([
@@ -12,6 +12,21 @@ const NON_CATEGORY_NAMES = new Set([
 
 const MAX_ROWS_PER_CHUNK = 80;
 
+function updateStats(stats: ExtractionStats, rows: RawExtractedRow[], label: string): void {
+  const articles = rows.filter((r) => !r.isAccessory).length;
+  const accessories = rows.filter((r) => r.isAccessory).length;
+  stats.articlesFound += rows.length;
+  stats.accessoriesFound += accessories;
+  if (rows.length > 0) {
+    stats.pageDetails.push({ label, articles, accessories });
+  }
+  for (const r of rows) {
+    if (r.varugrupp && !stats.varugrupper.includes(r.varugrupp)) {
+      stats.varugrupper.push(r.varugrupp);
+    }
+  }
+}
+
 export async function processExcel(
   file: File,
   supplierHint: string,
@@ -23,10 +38,18 @@ export async function processExcel(
   const sheetNames = workbook.SheetNames;
   const totalSheets = sheetNames.length;
 
+  const stats: ExtractionStats = {
+    articlesFound: 0,
+    accessoriesFound: 0,
+    varugrupper: [],
+    pageDetails: [],
+  };
+
   onProgress({
     message: `Excel laddad: ${totalSheets} flikar`,
     current: 0,
     total: totalSheets,
+    stats: { ...stats },
   });
 
   const allRows: RawExtractedRow[] = [];
@@ -39,6 +62,7 @@ export async function processExcel(
         message: `Stoppad efter flik ${i} av ${totalSheets}`,
         current: i,
         total: totalSheets,
+        stats: { ...stats },
       });
       break;
     }
@@ -50,6 +74,7 @@ export async function processExcel(
       message: `Behandlar flik "${sheetName}" (${i + 1} av ${totalSheets})`,
       current: i,
       total: totalSheets,
+      stats: { ...stats },
     });
 
     const isLikelyCategory = !NON_CATEGORY_NAMES.has(sheetName.toLowerCase().trim());
@@ -63,6 +88,7 @@ export async function processExcel(
         const rows = await extractFromText(text, supplierHint, contextHint);
         allRows.push(...rows);
         hasSucceeded = true;
+        updateStats(stats, rows, label);
       } catch (err) {
         errorCount++;
         const msg = err instanceof Error ? err.message : String(err);
@@ -78,7 +104,7 @@ export async function processExcel(
     const dataLines = lines.slice(1);
 
     if (dataLines.length <= MAX_ROWS_PER_CHUNK) {
-      await processChunk(sheetText, `flik "${sheetName}"`);
+      await processChunk(sheetText, `Flik "${sheetName}"`);
     } else {
       const totalChunks = Math.ceil(dataLines.length / MAX_ROWS_PER_CHUNK);
       for (let c = 0; c < totalChunks; c++) {
@@ -93,9 +119,10 @@ export async function processExcel(
           message: `Behandlar flik "${sheetName}" rad ${start + 1}–${end} (av ${dataLines.length})`,
           current: i,
           total: totalSheets,
+          stats: { ...stats },
         });
 
-        await processChunk(chunkText, `flik "${sheetName}" rad ${start + 1}–${end}`);
+        await processChunk(chunkText, `Flik "${sheetName}" rad ${start + 1}–${end}`);
       }
     }
 
@@ -104,6 +131,7 @@ export async function processExcel(
         message: `Flik "${sheetName}" klar (${i + 1} av ${totalSheets})`,
         current: i + 1,
         total: totalSheets,
+        stats: { ...stats },
       });
     }
   }

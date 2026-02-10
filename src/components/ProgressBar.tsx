@@ -12,15 +12,17 @@ export function ProgressBar({ progress }: Props) {
     : 0;
 
   return (
-    <div className="progress-container">
-      <div className="progress-message">{progress.message}</div>
-      <div className="progress-bar-track">
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm text-slate-700">{progress.message}</span>
+        <span className="text-xs font-medium text-slate-500">{pct}%</span>
+      </div>
+      <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
         <div
-          className="progress-bar-fill"
+          className="h-full bg-blue-600 rounded-full transition-all duration-300"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="progress-pct">{pct}%</div>
     </div>
   );
 }

@@ -43,11 +43,20 @@ export interface ArticleMapping {
   productName: string;
 }
 
+/** Detailed extraction statistics for the status monitor */
+export interface ExtractionStats {
+  articlesFound: number;
+  accessoriesFound: number;
+  varugrupper: string[];
+  pageDetails: { label: string; articles: number; accessories: number }[];
+}
+
 /** Progress callback info */
 export interface ProgressInfo {
   message: string;
   current: number;
   total: number;
+  stats?: ExtractionStats;
 }
 
 /** Pricing settings from user */

@@ -1,5 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import type { RawExtractedRow, ProgressInfo } from '../types';
+import type { RawExtractedRow, ProgressInfo, ExtractionStats } from '../types';
 import { extractFromImage } from './ai';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -9,6 +9,21 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 const PAGES_PER_CHUNK = 2;
 const RENDER_SCALE = 2;
+
+function updateStats(stats: ExtractionStats, rows: RawExtractedRow[], label: string): void {
+  const articles = rows.filter((r) => !r.isAccessory).length;
+  const accessories = rows.filter((r) => r.isAccessory).length;
+  stats.articlesFound += rows.length;
+  stats.accessoriesFound += accessories;
+  if (rows.length > 0) {
+    stats.pageDetails.push({ label, articles, accessories });
+  }
+  for (const r of rows) {
+    if (r.varugrupp && !stats.varugrupper.includes(r.varugrupp)) {
+      stats.varugrupper.push(r.varugrupp);
+    }
+  }
+}
 
 export async function processPdf(
   file: File,
@@ -20,10 +35,18 @@ export async function processPdf(
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const totalPages = pdf.numPages;
 
+  const stats: ExtractionStats = {
+    articlesFound: 0,
+    accessoriesFound: 0,
+    varugrupper: [],
+    pageDetails: [],
+  };
+
   onProgress({
     message: `PDF laddad: ${totalPages} sidor`,
     current: 0,
     total: totalPages,
+    stats: { ...stats },
   });
 
   const allRows: RawExtractedRow[] = [];
@@ -36,6 +59,7 @@ export async function processPdf(
         message: `Stoppad efter sida ${startPage - 1} av ${totalPages}`,
         current: startPage - 1,
         total: totalPages,
+        stats: { ...stats },
       });
       break;
     }
@@ -46,6 +70,7 @@ export async function processPdf(
       message: `Behandlar sida ${startPage}–${endPage} (av ${totalPages})`,
       current: startPage - 1,
       total: totalPages,
+      stats: { ...stats },
     });
 
     for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
@@ -58,6 +83,7 @@ export async function processPdf(
         const rows = await extractFromImage(imageBase64, 'image/png', supplierHint, contextHint);
         allRows.push(...rows);
         hasSucceeded = true;
+        updateStats(stats, rows, `Sida ${pageNum}`);
       } catch (err) {
         errorCount++;
         const lastError = err instanceof Error ? err : new Error(String(err));
@@ -73,6 +99,7 @@ export async function processPdf(
         message: `Sida ${startPage}–${Math.min(startPage + PAGES_PER_CHUNK - 1, totalPages)} klar (av ${totalPages})`,
         current: Math.min(startPage + PAGES_PER_CHUNK - 1, totalPages),
         total: totalPages,
+        stats: { ...stats },
       });
     }
   }

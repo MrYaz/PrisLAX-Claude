@@ -13,9 +13,11 @@ export function PriceSettings({ settings, onChange, disabled }: Props) {
   };
 
   return (
-    <div className="price-settings">
-      <div className="setting-row">
-        <label htmlFor="dealerDiscount">Återförsäljarrabatt (%)</label>
+    <div className="flex flex-wrap gap-4">
+      <div className="space-y-1">
+        <label htmlFor="dealerDiscount" className="block text-xs font-medium text-slate-500">
+          Återförsäljarrabatt (%)
+        </label>
         <input
           id="dealerDiscount"
           type="number"
@@ -24,10 +26,13 @@ export function PriceSettings({ settings, onChange, disabled }: Props) {
           onChange={(e) => update('dealerDiscount', e.target.value)}
           placeholder="0"
           disabled={disabled}
+          className="block w-36 rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
         />
       </div>
-      <div className="setting-row">
-        <label htmlFor="priceAdjustment">Prisjustering (%)</label>
+      <div className="space-y-1">
+        <label htmlFor="priceAdjustment" className="block text-xs font-medium text-slate-500">
+          Prisjustering (%)
+        </label>
         <input
           id="priceAdjustment"
           type="number"
@@ -36,10 +41,13 @@ export function PriceSettings({ settings, onChange, disabled }: Props) {
           onChange={(e) => update('priceAdjustment', e.target.value)}
           placeholder="0"
           disabled={disabled}
+          className="block w-36 rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
         />
       </div>
-      <div className="setting-row">
-        <label htmlFor="exchangeRate">Växelkurs till SEK</label>
+      <div className="space-y-1">
+        <label htmlFor="exchangeRate" className="block text-xs font-medium text-slate-500">
+          Växelkurs till SEK
+        </label>
         <input
           id="exchangeRate"
           type="number"
@@ -49,6 +57,7 @@ export function PriceSettings({ settings, onChange, disabled }: Props) {
           onChange={(e) => update('exchangeRate', e.target.value)}
           placeholder="1"
           disabled={disabled}
+          className="block w-36 rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
         />
       </div>
     </div>
