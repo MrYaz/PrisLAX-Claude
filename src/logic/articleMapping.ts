@@ -36,9 +36,9 @@ export function parseMappingCsv(csvText: string): ArticleMapping[] {
     'leverantör', 'leverantor', 'supplier', 'lev',
   ]);
   const supplierArtCol = findColumn(headers, [
-    'ert artikelnr', 'ert artikelr', 'ert art', 'leverantör artikelnr',
-    'lev artikelnr', 'supplier article', 'lev art.nr', 'lev artnr',
-    'artikelnr leverantör', 'ert art.nr', 'ert artnr',
+    'lev. artikelnr', 'lev. art', 'ert artikelnr', 'ert artikelr', 'ert art',
+    'leverantör artikelnr', 'lev artikelnr', 'supplier article',
+    'lev art.nr', 'lev artnr', 'artikelnr leverantör', 'ert art.nr', 'ert artnr',
   ]);
   const internArtCol = findColumn(headers, [
     'vårt artikelnr', 'vart artikelnr', 'vårt art', 'internt artikelnr',
