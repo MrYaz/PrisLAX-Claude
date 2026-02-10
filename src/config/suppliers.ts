@@ -25,7 +25,15 @@ Each intersection with a price is a separate article.
 The main products typically appear as column headers with their article numbers.
 Accessories appear as row labels on the left side.
 Extract EVERY price cell in the matrix as a separate row.
-Mark intersection rows as accessories (isAccessory=true) and include ALL column headers they belong to in fitsProducts.`,
+Mark intersection rows as accessories (isAccessory=true) and include ALL column headers they belong to in fitsProducts.
+
+IMPORTANT — Validate each "benamning" before finalizing:
+- For main products: the benamning should be a real product name (e.g., "Säkerhetsskåp SA210", "Dokumentskåp DS200"), NOT a column header, category title, or page label.
+- For accessories: the benamning should describe the accessory itself (e.g., "Elkodlås 1+1 kod", "Hyllplan extra"), NOT the main product it fits. The main product goes in fitsProducts.
+- In matrix layouts, the accessory name comes from the ROW label on the LEFT side, never from the COLUMN header. Column headers identify the main products (fitsProducts).
+- If a benamning looks like just a model code (e.g., "SA210") without a descriptive name, look at surrounding context — headings, row labels, or the category — to build a more descriptive name like "Säkerhetsskåp SA210".
+- If a benamning seems to be a category heading rather than a product name, re-examine: the actual product name is likely on the same row but in a different position.
+- When uncertain, prefer combining the category/varugrupp with the article number (e.g., "Nyckelskåp NE400") over leaving a vague or incorrect name.`,
       excel: `Profsafe Excel files often have one sheet per product category.
 The sheet name IS the product category (varugrupp).
 Main products are listed with article numbers, names, dimensions, weights, and prices.
