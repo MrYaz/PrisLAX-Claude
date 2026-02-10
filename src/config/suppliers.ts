@@ -34,6 +34,42 @@ These offset tables list accessories that belong to the main products on the sam
     },
   },
   {
+    id: 'grimstorp',
+    name: 'Grimstorp',
+    defaultHint: 'This is a Grimstorp price list.',
+    extractionHints: {},
+  },
+  {
+    id: 'businesstonordic',
+    name: 'Business To Nordic',
+    defaultHint: 'This is a Business To Nordic price list.',
+    extractionHints: {},
+  },
+  {
+    id: 'creone',
+    name: 'Creone',
+    defaultHint: 'This is a Creone price list.',
+    extractionHints: {},
+  },
+  {
+    id: 'altikon',
+    name: 'Altikon',
+    defaultHint: 'This is an Altikon price list.',
+    extractionHints: {},
+  },
+  {
+    id: 'jiwa',
+    name: 'JiWa',
+    defaultHint: 'This is a JiWa price list.',
+    extractionHints: {},
+  },
+  {
+    id: 'formcase',
+    name: 'Formcase',
+    defaultHint: 'This is a Formcase price list.',
+    extractionHints: {},
+  },
+  {
     id: 'generic',
     name: 'Övrig leverantör',
     defaultHint: '',
