@@ -23,15 +23,29 @@ export function postProcess(
 
   // 2. Convert to PriceRow format
   let rows: PriceRow[] = merged.map((raw) => ({
-    ertArtikelnr: raw.artikelnr,
+    ertArtikelnr: raw.artikelnr.replace(/\s+/g, ''),
     vartArtikelnr: '', // Never filled by AI
-    varugrupp: raw.varugrupp,
     benamning: raw.benamning,
+    varugrupp: raw.varugrupp,
+    kortBeskrivning: raw.kortBeskrivning || '',
+    ordPris: '',
+    rabattProcent: '',
+    nettoprisSEK: raw.pris,
     vikt: raw.vikt,
     volym: normalizeVolume(raw.volym),
+    hojd: raw.hojd || '',
+    bredd: raw.bredd || '',
+    djup: raw.djup || '',
+    diameter: raw.diameter || '',
+    helpall: raw.helpall || '',
+    halvpall: raw.halvpall || '',
     pallkostnad: raw.pallkostnad,
-    originalpris: '',
-    nettoprisSEK: raw.pris,
+    ralFarg: raw.ralFarg || '',
+    fastFrakt: raw.fastFrakt || '',
+    leveranstid: raw.leveranstid || '',
+    ursprungsland: raw.ursprungsland || '',
+    manualLank: raw.manualLank || '',
+    produktLank: raw.produktLank || '',
   }));
 
   // 3. Apply article number mappings (supplier-aware)
@@ -96,12 +110,26 @@ function cleanRow(row: PriceRow): PriceRow {
   return {
     ertArtikelnr: clean(row.ertArtikelnr),
     vartArtikelnr: clean(row.vartArtikelnr),
-    varugrupp: clean(row.varugrupp),
     benamning: clean(row.benamning),
+    varugrupp: clean(row.varugrupp),
+    kortBeskrivning: clean(row.kortBeskrivning),
+    ordPris: clean(row.ordPris),
+    rabattProcent: clean(row.rabattProcent),
+    nettoprisSEK: clean(row.nettoprisSEK),
     vikt: clean(row.vikt),
     volym: clean(row.volym),
+    hojd: clean(row.hojd),
+    bredd: clean(row.bredd),
+    djup: clean(row.djup),
+    diameter: clean(row.diameter),
+    helpall: clean(row.helpall),
+    halvpall: clean(row.halvpall),
     pallkostnad: clean(row.pallkostnad),
-    originalpris: clean(row.originalpris),
-    nettoprisSEK: clean(row.nettoprisSEK),
+    ralFarg: clean(row.ralFarg),
+    fastFrakt: clean(row.fastFrakt),
+    leveranstid: clean(row.leveranstid),
+    ursprungsland: clean(row.ursprungsland),
+    manualLank: clean(row.manualLank),
+    produktLank: clean(row.produktLank),
   };
 }

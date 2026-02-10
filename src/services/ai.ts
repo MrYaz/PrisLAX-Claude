@@ -27,12 +27,25 @@ function getClient(): GoogleGenerativeAI {
 const EXTRACTION_PROMPT = `You are a data extraction assistant. Your ONLY job is to look at this document content and extract every product/article row you can find.
 
 For EACH product or article row, extract these fields:
-- artikelnr: the article number / product code / SKU
+- artikelnr: the article number / product code / SKU. IMPORTANT: Article numbers NEVER contain spaces. If you see what looks like a line break in an article number (e.g., "S680/LA PTOP" or "S1000/L APTOP"), remove the space to form one continuous string (e.g., "S680/LAPTOP", "S1000/LAPTOP").
 - benamning: the product name / description
 - varugrupp: the product group or category (from sheet name, heading, or context)
-- vikt: weight (if present)
-- volym: volume (if present)
+- kortBeskrivning: a short description if available (distinct from benamning)
+- vikt: weight in kg (if present)
+- volym: volume in m³ (if present)
+- hojd: height in mm (if present)
+- bredd: width in mm (if present)
+- djup: depth in mm (if present)
+- diameter: diameter in mm (if present)
+- helpall: full pallet quantity (if present)
+- halvpall: half pallet quantity (if present)
 - pallkostnad: pallet cost (if present)
+- ralFarg: RAL color code (if present)
+- fastFrakt: fixed freight cost (if present)
+- leveranstid: delivery time in days (if present)
+- ursprungsland: country of origin (if present)
+- manualLank: URL to product manual (if present)
+- produktLank: URL to product page (if present)
 - pris: the price (the most specific price you can find, e.g. net price, unit price)
 - isAccessory: true if this row is clearly an accessory/tillbehör for another product
 - fitsProducts: if this is an accessory, list the main product names or article numbers it belongs to
@@ -42,11 +55,14 @@ IMPORTANT RULES:
 - For matrix/grid layouts where columns are main products and rows are accessories with prices at intersections, extract each intersection as a separate row. Mark these as accessories.
 - If a page has no product data at all (just text, terms, conditions, logos), return an empty array.
 - Do NOT invent data. Only extract what is actually visible.
+- Article numbers must NOT contain spaces — always join fragments into one continuous string.
 - Prices should be numbers only (no currency symbols). Use dot as decimal separator.
+- Dimensions (height, width, depth, diameter) should be numbers in mm without units.
+- Weight should be a number in kg without units.
 - If volume is given in liters, convert to cubic meters (divide by 1000).
 
 Return ONLY a JSON array. No markdown, no explanation. Example:
-[{"artikelnr":"SA210","benamning":"Säkerhetsskåp SA210","varugrupp":"Säkerhetsskåp","vikt":"45 kg","volym":"0.35","pallkostnad":"","pris":"4500","isAccessory":false,"fitsProducts":[]},{"artikelnr":"EL-100","benamning":"Elkodlås 1+1 kod","varugrupp":"","vikt":"","volym":"","pallkostnad":"","pris":"890","isAccessory":true,"fitsProducts":["SA210","SA390"]}]
+[{"artikelnr":"SA210","benamning":"Säkerhetsskåp SA210","varugrupp":"Säkerhetsskåp","kortBeskrivning":"","vikt":"45","volym":"0.35","hojd":"1200","bredd":"600","djup":"500","diameter":"","helpall":"","halvpall":"","pallkostnad":"","ralFarg":"","fastFrakt":"","leveranstid":"","ursprungsland":"","manualLank":"","produktLank":"","pris":"4500","isAccessory":false,"fitsProducts":[]},{"artikelnr":"EL-100","benamning":"Elkodlås 1+1 kod","varugrupp":"","kortBeskrivning":"","vikt":"","volym":"","hojd":"","bredd":"","djup":"","diameter":"","helpall":"","halvpall":"","pallkostnad":"","ralFarg":"","fastFrakt":"","leveranstid":"","ursprungsland":"","manualLank":"","produktLank":"","pris":"890","isAccessory":true,"fitsProducts":["SA210","SA390"]}]
 
 If no products found, return: []`;
 
@@ -121,12 +137,25 @@ function parseAIResponse(text: string): RawExtractedRow[] {
     if (!Array.isArray(parsed)) return [];
 
     return parsed.map((row: Record<string, unknown>) => ({
-      artikelnr: String(row.artikelnr ?? '').trim(),
+      artikelnr: String(row.artikelnr ?? '').replace(/\s+/g, '').trim(),
       benamning: String(row.benamning ?? '').trim(),
       varugrupp: String(row.varugrupp ?? '').trim(),
+      kortBeskrivning: String(row.kortBeskrivning ?? '').trim(),
       vikt: String(row.vikt ?? '').trim(),
       volym: String(row.volym ?? '').trim(),
+      hojd: String(row.hojd ?? '').trim(),
+      bredd: String(row.bredd ?? '').trim(),
+      djup: String(row.djup ?? '').trim(),
+      diameter: String(row.diameter ?? '').trim(),
+      helpall: String(row.helpall ?? '').trim(),
+      halvpall: String(row.halvpall ?? '').trim(),
       pallkostnad: String(row.pallkostnad ?? '').trim(),
+      ralFarg: String(row.ralFarg ?? '').trim(),
+      fastFrakt: String(row.fastFrakt ?? '').trim(),
+      leveranstid: String(row.leveranstid ?? '').trim(),
+      ursprungsland: String(row.ursprungsland ?? '').trim(),
+      manualLank: String(row.manualLank ?? '').trim(),
+      produktLank: String(row.produktLank ?? '').trim(),
       pris: String(row.pris ?? '').trim(),
       isAccessory: Boolean(row.isAccessory),
       fitsProducts: Array.isArray(row.fitsProducts)

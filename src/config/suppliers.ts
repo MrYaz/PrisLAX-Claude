@@ -27,6 +27,15 @@ Accessories appear as row labels on the left side.
 Extract EVERY price cell in the matrix as a separate row.
 Mark intersection rows as accessories (isAccessory=true) and include ALL column headers they belong to in fitsProducts.
 
+ARTICLE NUMBERS — Line-break artifacts:
+- Column header article numbers sometimes wrap across two lines in the PDF (e.g., "S680/LA" on one line and "PTOP" on the next).
+- ALWAYS join such fragments WITHOUT a space: "S680/LAPTOP", NOT "S680/LA PTOP".
+- Article numbers NEVER contain spaces. Remove any spaces that appear within them.
+
+ACCESSORY ARTICLE NUMBERS:
+- For accessories in the matrix, the article number is printed in the LOWER part of the same table cell as the accessory price.
+- Look carefully inside each price cell for a small article number below or next to the price value. That is the accessory's artikelnr.
+
 IMPORTANT — Validate each "benamning" before finalizing:
 - For main products: the benamning should be a real product name (e.g., "Säkerhetsskåp SA210", "Dokumentskåp DS200"), NOT a column header, category title, or page label.
 - For accessories: the benamning should describe the accessory itself (e.g., "Elkodlås 1+1 kod", "Hyllplan extra"), NOT the main product it fits. The main product goes in fitsProducts.

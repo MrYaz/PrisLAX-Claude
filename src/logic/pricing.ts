@@ -9,14 +9,23 @@ import type { PricingSettings, PriceRow } from '../types';
  *   afterAdjustment = afterDiscount * (1 + priceAdjustment/100)
  *   nettopris = afterAdjustment * exchangeRate
  *
- * Originalpris = basePrice * exchangeRate (only shown if different from nettopris)
+ * Ord. pris = basePrice * exchangeRate (shown when discount or adjustment applied)
+ * Rabatt % = dealerDiscount (shown when > 0)
+ * Nettopris = final price after all calculations
+ *
+ * All prices are shown as integers (no decimals).
  */
 export function applyPricing(
   rows: PriceRow[],
   settings: PricingSettings
 ): PriceRow[] {
+  const hasDiscount = settings.dealerDiscount > 0;
+  const hasAdjustment = settings.priceAdjustment !== 0;
+  const hasExchangeRate = settings.exchangeRate !== 1;
+  const hasPricingChanges = hasDiscount || hasAdjustment || hasExchangeRate;
+
   return rows.map((row) => {
-    const basePrice = parsePrice(row.nettoprisSEK || row.originalpris);
+    const basePrice = parsePrice(row.nettoprisSEK || row.ordPris);
     if (isNaN(basePrice) || basePrice === 0) return row;
 
     const originalInSEK = basePrice * settings.exchangeRate;
@@ -24,17 +33,17 @@ export function applyPricing(
     const afterAdjustment = afterDiscount * (1 + settings.priceAdjustment / 100);
     const nettopris = afterAdjustment * settings.exchangeRate;
 
-    // Round to 2 decimals
-    const nettoprisRounded = Math.round(nettopris * 100) / 100;
-    const originalRounded = Math.round(originalInSEK * 100) / 100;
+    // Round to integers
+    const nettoprisRounded = Math.round(nettopris);
+    const originalRounded = Math.round(originalInSEK);
 
-    // Originalpris empty if same as nettopris
-    const showOriginal =
-      Math.abs(originalRounded - nettoprisRounded) > 0.01;
+    // Show Ord. pris when pricing changes are applied and prices differ
+    const showOriginal = hasPricingChanges && Math.abs(originalRounded - nettoprisRounded) >= 1;
 
     return {
       ...row,
-      originalpris: showOriginal ? formatPrice(originalRounded) : '',
+      ordPris: showOriginal ? formatPrice(originalRounded) : '',
+      rabattProcent: hasDiscount ? String(settings.dealerDiscount) : '',
       nettoprisSEK: formatPrice(nettoprisRounded),
     };
   });
@@ -52,6 +61,5 @@ function parsePrice(value: string): number {
 
 function formatPrice(value: number): string {
   if (value === 0) return '';
-  // Format with 2 decimals, using dot as decimal separator
-  return value.toFixed(2);
+  return String(value);
 }

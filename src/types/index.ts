@@ -4,20 +4,48 @@ export interface PriceRow {
   ertArtikelnr: string;
   /** Our internal article number (filled by mapping, never by AI) */
   vartArtikelnr: string;
-  /** Product group / category */
-  varugrupp: string;
   /** Product name / description */
   benamning: string;
-  /** Weight */
+  /** Product group / category */
+  varugrupp: string;
+  /** Short description */
+  kortBeskrivning: string;
+  /** Original / list price before discounts */
+  ordPris: string;
+  /** Discount percentage applied */
+  rabattProcent: string;
+  /** Net price in SEK */
+  nettoprisSEK: string;
+  /** Weight in kg */
   vikt: string;
   /** Volume in cubic meters */
   volym: string;
+  /** Height in mm */
+  hojd: string;
+  /** Width in mm */
+  bredd: string;
+  /** Depth in mm */
+  djup: string;
+  /** Diameter in mm */
+  diameter: string;
+  /** Full pallet quantity */
+  helpall: string;
+  /** Half pallet quantity */
+  halvpall: string;
   /** Pallet cost */
   pallkostnad: string;
-  /** Original price (empty if same as nettopris) */
-  originalpris: string;
-  /** Net price in SEK */
-  nettoprisSEK: string;
+  /** RAL color code */
+  ralFarg: string;
+  /** Fixed freight cost */
+  fastFrakt: string;
+  /** Delivery time in days */
+  leveranstid: string;
+  /** Country of origin */
+  ursprungsland: string;
+  /** Link to product manual */
+  manualLank: string;
+  /** Link to product page */
+  produktLank: string;
 }
 
 /** Raw extracted row from AI – before post-processing */
@@ -25,9 +53,22 @@ export interface RawExtractedRow {
   artikelnr: string;
   benamning: string;
   varugrupp: string;
+  kortBeskrivning: string;
   vikt: string;
   volym: string;
+  hojd: string;
+  bredd: string;
+  djup: string;
+  diameter: string;
+  helpall: string;
+  halvpall: string;
   pallkostnad: string;
+  ralFarg: string;
+  fastFrakt: string;
+  leveranstid: string;
+  ursprungsland: string;
+  manualLank: string;
+  produktLank: string;
   pris: string;
   /** If AI detects this is an accessory */
   isAccessory: boolean;
@@ -83,13 +124,27 @@ export interface SupplierProfile {
 }
 
 export const OUTPUT_COLUMNS = [
-  'Ert Artikelnr',
-  'Vårt Artikelnr',
-  'Varugrupp',
+  'Ert artikelnr',
+  'Vårt artikelnr',
   'Benämning',
-  'Vikt',
-  'Volym (m³)',
-  'Pallkostnad',
-  'Originalpris',
+  'Varugrupp',
+  'Kort beskrivning',
+  'Ord. pris',
+  'Rabatt %',
   'Nettopris (SEK)',
+  'Vikt (kg)',
+  'Volym (m3)',
+  'Höjd (mm)',
+  'Bredd (mm)',
+  'Djup (mm)',
+  'Diameter (mm)',
+  'Helpall',
+  'Halvpall',
+  'Pallkostnad',
+  'RAL-färg',
+  'Fast frakt (kr)',
+  'Leveranstid (dagar)',
+  'Ursprungsland',
+  'Manual-länk',
+  'Produktlänk',
 ] as const;
