@@ -1,8 +1,25 @@
 import mammoth from 'mammoth';
-import type { RawExtractedRow, ProgressInfo } from '../types';
+import type { RawExtractedRow, ProgressInfo, ExtractionStats } from '../types';
 import { extractFromText } from './ai';
+import { runParallel, type ParallelTask } from './parallelRunner';
 
 const MAX_CHARS_PER_CHUNK = 8000;
+const CONCURRENCY = 4;
+
+function updateStats(stats: ExtractionStats, rows: RawExtractedRow[], label: string): void {
+  const articles = rows.filter((r) => !r.isAccessory).length;
+  const accessories = rows.filter((r) => r.isAccessory).length;
+  stats.articlesFound += rows.length;
+  stats.accessoriesFound += accessories;
+  if (rows.length > 0) {
+    stats.pageDetails.push({ label, articles, accessories });
+  }
+  for (const r of rows) {
+    if (r.varugrupp && !stats.varugrupper.includes(r.varugrupp)) {
+      stats.varugrupper.push(r.varugrupp);
+    }
+  }
+}
 
 export async function processWord(
   file: File,
@@ -10,10 +27,18 @@ export async function processWord(
   onProgress: (info: ProgressInfo) => void,
   signal: AbortSignal
 ): Promise<RawExtractedRow[]> {
+  const stats: ExtractionStats = {
+    articlesFound: 0,
+    accessoriesFound: 0,
+    varugrupper: [],
+    pageDetails: [],
+  };
+
   onProgress({
     message: 'Läser Word-dokument...',
     current: 0,
     total: 1,
+    stats: { ...stats },
   });
 
   const arrayBuffer = await file.arrayBuffer();
@@ -21,65 +46,86 @@ export async function processWord(
   const text = result.value;
 
   if (!text.trim()) {
-    onProgress({ message: 'Word-dokumentet var tomt', current: 1, total: 1 });
+    onProgress({ message: 'Word-dokumentet var tomt', current: 1, total: 1, stats: { ...stats } });
     return [];
   }
 
-  if (text.length <= MAX_CHARS_PER_CHUNK) {
-    onProgress({ message: 'Analyserar Word-dokument...', current: 0, total: 1 });
-    const contextHint = `This text comes from a Word document named "${file.name}". Extract all product/price data you can find.`;
-    const rows = await extractFromText(text, supplierHint, contextHint);
-    onProgress({ message: 'Word-dokument klart', current: 1, total: 1 });
-    return rows;
-  }
-
+  // Split into chunks
   const paragraphs = text.split('\n');
-  const chunks: string[] = [];
+  const textChunks: string[] = [];
   let currentChunk = '';
 
   for (const para of paragraphs) {
     if (currentChunk.length + para.length > MAX_CHARS_PER_CHUNK && currentChunk) {
-      chunks.push(currentChunk);
+      textChunks.push(currentChunk);
       currentChunk = '';
     }
     currentChunk += para + '\n';
   }
-  if (currentChunk.trim()) chunks.push(currentChunk);
+  if (currentChunk.trim()) textChunks.push(currentChunk);
 
-  const allRows: RawExtractedRow[] = [];
-  const totalChunks = chunks.length;
-  let hasSucceeded = false;
+  const totalChunks = textChunks.length;
 
-  for (let i = 0; i < totalChunks; i++) {
-    if (signal.aborted) {
+  // Create parallel tasks
+  const tasks: ParallelTask<{ chunkIndex: number; rows: RawExtractedRow[] }>[] = textChunks.map(
+    (chunkText, i) => ({
+      label: `Del ${i + 1}`,
+      run: async () => {
+        const contextHint = `This text comes from a Word document named "${file.name}", part ${i + 1} of ${totalChunks}.`;
+        const rows = await extractFromText(chunkText, supplierHint, contextHint);
+        return { chunkIndex: i, rows };
+      },
+    })
+  );
+
+  let completedCount = 0;
+  const active = Math.min(CONCURRENCY, totalChunks);
+
+  onProgress({
+    message: `Analyserar Word-dokument (${totalChunks} delar, ${active} parallellt)...`,
+    current: 0,
+    total: totalChunks,
+    stats: { ...stats },
+  });
+
+  const resultsByChunk = new Map<number, RawExtractedRow[]>();
+
+  const { succeeded, firstError } = await runParallel(tasks, {
+    concurrency: CONCURRENCY,
+    signal,
+    onTaskDone: (res, _index, label) => {
+      resultsByChunk.set(res.chunkIndex, res.rows);
+      completedCount++;
+      updateStats(stats, res.rows, label);
       onProgress({
-        message: `Stoppad efter del ${i} av ${totalChunks}`,
-        current: i,
+        message: `${label} klar (${completedCount} av ${totalChunks})`,
+        current: completedCount,
         total: totalChunks,
+        stats: { ...stats },
       });
-      break;
-    }
+    },
+    onTaskError: (error, _index, label) => {
+      completedCount++;
+      console.warn(`${label} misslyckades: ${error.message}`);
+      onProgress({
+        message: `${label} misslyckades (${completedCount} av ${totalChunks})`,
+        current: completedCount,
+        total: totalChunks,
+        stats: { ...stats },
+      });
+    },
+  });
 
-    onProgress({
-      message: `Behandlar del ${i + 1} av ${totalChunks} från Word-dokument`,
-      current: i,
-      total: totalChunks,
-    });
-
-    const contextHint = `This text comes from a Word document named "${file.name}", part ${i + 1} of ${totalChunks}.`;
-    try {
-      const rows = await extractFromText(chunks[i], supplierHint, contextHint);
-      allRows.push(...rows);
-      hasSucceeded = true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!hasSucceeded) {
-        throw new Error(`AI-anrop misslyckades (Word del ${i + 1}): ${msg}`);
-      }
-      console.warn(`Word del ${i + 1} misslyckades, fortsätter: ${msg}`);
-    }
+  if (succeeded === 0 && firstError) {
+    throw new Error(`AI-anrop misslyckades: ${firstError.message}`);
   }
 
-  onProgress({ message: 'Word-dokument klart', current: totalChunks, total: totalChunks });
+  // Combine results in order
+  const allRows: RawExtractedRow[] = [];
+  for (let i = 0; i < totalChunks; i++) {
+    const rows = resultsByChunk.get(i);
+    if (rows) allRows.push(...rows);
+  }
+
   return allRows;
 }

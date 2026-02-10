@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { RawExtractedRow, ProgressInfo, ExtractionStats } from '../types';
 import { extractFromText } from './ai';
+import { runParallel, type ParallelTask } from './parallelRunner';
 
 const NON_CATEGORY_NAMES = new Set([
   'info', 'villkor', 'blad1', 'blad2', 'blad3',
@@ -11,6 +12,7 @@ const NON_CATEGORY_NAMES = new Set([
 ]);
 
 const MAX_ROWS_PER_CHUNK = 80;
+const CONCURRENCY = 4;
 
 function updateStats(stats: ExtractionStats, rows: RawExtractedRow[], label: string): void {
   const articles = rows.filter((r) => !r.isAccessory).length;
@@ -25,6 +27,14 @@ function updateStats(stats: ExtractionStats, rows: RawExtractedRow[], label: str
       stats.varugrupper.push(r.varugrupp);
     }
   }
+}
+
+interface TextChunk {
+  chunkIndex: number;
+  sheetName: string;
+  text: string;
+  label: string;
+  contextHint: string;
 }
 
 export async function processExcel(
@@ -52,92 +62,115 @@ export async function processExcel(
     stats: { ...stats },
   });
 
-  const allRows: RawExtractedRow[] = [];
-  let hasSucceeded = false;
-  let errorCount = 0;
-
+  // Pre-parse all sheets into text chunks (fast, no API calls)
+  const chunks: TextChunk[] = [];
   for (let i = 0; i < totalSheets; i++) {
-    if (signal.aborted) {
-      onProgress({
-        message: `Stoppad efter flik ${i} av ${totalSheets}`,
-        current: i,
-        total: totalSheets,
-        stats: { ...stats },
-      });
-      break;
-    }
-
     const sheetName = sheetNames[i];
     const sheet = workbook.Sheets[sheetName];
-
-    onProgress({
-      message: `Behandlar flik "${sheetName}" (${i + 1} av ${totalSheets})`,
-      current: i,
-      total: totalSheets,
-      stats: { ...stats },
-    });
-
     const isLikelyCategory = !NON_CATEGORY_NAMES.has(sheetName.toLowerCase().trim());
     const sheetText = sheetToText(sheet);
-
     if (!sheetText.trim()) continue;
 
-    const processChunk = async (text: string, label: string) => {
-      const contextHint = buildContextHint(sheetName, isLikelyCategory, file.name);
-      try {
-        const rows = await extractFromText(text, supplierHint, contextHint);
-        allRows.push(...rows);
-        hasSucceeded = true;
-        updateStats(stats, rows, label);
-      } catch (err) {
-        errorCount++;
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!hasSucceeded) {
-          throw new Error(`AI-anrop misslyckades (${label}): ${msg}`);
-        }
-        console.warn(`${label} misslyckades, fortsätter: ${msg}`);
-      }
-    };
-
+    const contextHint = buildContextHint(sheetName, isLikelyCategory, file.name);
     const lines = sheetText.split('\n');
     const headerLine = lines[0] || '';
     const dataLines = lines.slice(1);
 
     if (dataLines.length <= MAX_ROWS_PER_CHUNK) {
-      await processChunk(sheetText, `Flik "${sheetName}"`);
+      chunks.push({
+        chunkIndex: chunks.length,
+        sheetName,
+        text: sheetText,
+        label: `Flik "${sheetName}"`,
+        contextHint,
+      });
     } else {
-      const totalChunks = Math.ceil(dataLines.length / MAX_ROWS_PER_CHUNK);
-      for (let c = 0; c < totalChunks; c++) {
-        if (signal.aborted) break;
-
+      const totalSubChunks = Math.ceil(dataLines.length / MAX_ROWS_PER_CHUNK);
+      for (let c = 0; c < totalSubChunks; c++) {
         const start = c * MAX_ROWS_PER_CHUNK;
         const end = Math.min(start + MAX_ROWS_PER_CHUNK, dataLines.length);
         const chunkLines = [headerLine, ...dataLines.slice(start, end)];
-        const chunkText = chunkLines.join('\n');
-
-        onProgress({
-          message: `Behandlar flik "${sheetName}" rad ${start + 1}–${end} (av ${dataLines.length})`,
-          current: i,
-          total: totalSheets,
-          stats: { ...stats },
+        chunks.push({
+          chunkIndex: chunks.length,
+          sheetName,
+          text: chunkLines.join('\n'),
+          label: `Flik "${sheetName}" rad ${start + 1}–${end}`,
+          contextHint,
         });
-
-        await processChunk(chunkText, `Flik "${sheetName}" rad ${start + 1}–${end}`);
       }
-    }
-
-    if (!signal.aborted) {
-      onProgress({
-        message: `Flik "${sheetName}" klar (${i + 1} av ${totalSheets})`,
-        current: i + 1,
-        total: totalSheets,
-        stats: { ...stats },
-      });
     }
   }
 
-  if (errorCount > 0) {
-    console.warn(`Excel-behandling klar med ${errorCount} misslyckade delar`);
+  const totalChunks = chunks.length;
+  if (totalChunks === 0) return [];
+
+  // Create parallel tasks
+  const tasks: ParallelTask<{ chunkIndex: number; rows: RawExtractedRow[] }>[] = chunks.map(
+    (chunk) => ({
+      label: chunk.label,
+      run: async () => {
+        const rows = await extractFromText(chunk.text, supplierHint, chunk.contextHint);
+        return { chunkIndex: chunk.chunkIndex, rows };
+      },
+    })
+  );
+
+  let completedCount = 0;
+  const active = Math.min(CONCURRENCY, totalChunks);
+
+  onProgress({
+    message: `Analyserar ${totalChunks} delar (${active} parallellt)...`,
+    current: 0,
+    total: totalChunks,
+    stats: { ...stats },
+  });
+
+  const resultsByChunk = new Map<number, RawExtractedRow[]>();
+
+  const { succeeded, firstError } = await runParallel(tasks, {
+    concurrency: CONCURRENCY,
+    signal,
+    onTaskDone: (result, _index, label) => {
+      resultsByChunk.set(result.chunkIndex, result.rows);
+      completedCount++;
+      updateStats(stats, result.rows, label);
+      onProgress({
+        message: `${label} klar (${completedCount} av ${totalChunks})`,
+        current: completedCount,
+        total: totalChunks,
+        stats: { ...stats },
+      });
+    },
+    onTaskError: (error, _index, label) => {
+      completedCount++;
+      console.warn(`${label} misslyckades: ${error.message}`);
+      onProgress({
+        message: `${label} misslyckades (${completedCount} av ${totalChunks})`,
+        current: completedCount,
+        total: totalChunks,
+        stats: { ...stats },
+      });
+    },
+  });
+
+  if (succeeded === 0 && firstError) {
+    throw new Error(`AI-anrop misslyckades: ${firstError.message}`);
+  }
+
+  // Combine results in chunk order
+  const allRows: RawExtractedRow[] = [];
+  for (let i = 0; i < totalChunks; i++) {
+    const rows = resultsByChunk.get(i);
+    if (rows) allRows.push(...rows);
+  }
+
+  if (signal.aborted) {
+    onProgress({
+      message: `Stoppad — ${completedCount} av ${totalChunks} delar behandlade`,
+      current: completedCount,
+      total: totalChunks,
+      stats: { ...stats },
+    });
   }
 
   return allRows;

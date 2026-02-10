@@ -1,14 +1,15 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import type { RawExtractedRow, ProgressInfo, ExtractionStats } from '../types';
 import { extractFromImage } from './ai';
+import { runParallel, type ParallelTask } from './parallelRunner';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
   import.meta.url
 ).toString();
 
-const PAGES_PER_CHUNK = 2;
 const RENDER_SCALE = 2;
+const CONCURRENCY = 4;
 
 function updateStats(stats: ExtractionStats, rows: RawExtractedRow[], label: string): void {
   const articles = rows.filter((r) => !r.isAccessory).length;
@@ -49,63 +50,78 @@ export async function processPdf(
     stats: { ...stats },
   });
 
-  const allRows: RawExtractedRow[] = [];
-  let hasSucceeded = false;
-  let errorCount = 0;
+  // Build one task per page — each task renders + sends to Gemini
+  const tasks: ParallelTask<{ pageNum: number; rows: RawExtractedRow[] }>[] = [];
+  for (let p = 1; p <= totalPages; p++) {
+    const pageNum = p;
+    tasks.push({
+      label: `Sida ${pageNum}`,
+      run: async () => {
+        const base64 = await renderPageToBase64(pdf, pageNum);
+        const contextHint = `This is page ${pageNum} of ${totalPages} from a PDF price list named "${file.name}".`;
+        const rows = await extractFromImage(base64, 'image/png', supplierHint, contextHint);
+        return { pageNum, rows };
+      },
+    });
+  }
 
-  for (let startPage = 1; startPage <= totalPages; startPage += PAGES_PER_CHUNK) {
-    if (signal.aborted) {
+  let completedCount = 0;
+  const active = Math.min(CONCURRENCY, totalPages);
+
+  onProgress({
+    message: `Analyserar ${totalPages} sidor (${active} parallellt)...`,
+    current: 0,
+    total: totalPages,
+    stats: { ...stats },
+  });
+
+  // Results indexed by page number to preserve order
+  const resultsByPage = new Map<number, RawExtractedRow[]>();
+
+  const { succeeded, firstError } = await runParallel(tasks, {
+    concurrency: CONCURRENCY,
+    signal,
+    onTaskDone: (result, _index, label) => {
+      resultsByPage.set(result.pageNum, result.rows);
+      completedCount++;
+      updateStats(stats, result.rows, label);
       onProgress({
-        message: `Stoppad efter sida ${startPage - 1} av ${totalPages}`,
-        current: startPage - 1,
+        message: `${label} klar (${completedCount} av ${totalPages})`,
+        current: completedCount,
         total: totalPages,
         stats: { ...stats },
       });
-      break;
-    }
+    },
+    onTaskError: (error, _index, label) => {
+      completedCount++;
+      console.warn(`${label} misslyckades: ${error.message}`);
+      onProgress({
+        message: `${label} misslyckades (${completedCount} av ${totalPages})`,
+        current: completedCount,
+        total: totalPages,
+        stats: { ...stats },
+      });
+    },
+  });
 
-    const endPage = Math.min(startPage + PAGES_PER_CHUNK - 1, totalPages);
+  if (succeeded === 0 && firstError) {
+    throw new Error(`AI-anrop misslyckades: ${firstError.message}`);
+  }
 
+  // Combine results in page order
+  const allRows: RawExtractedRow[] = [];
+  for (let p = 1; p <= totalPages; p++) {
+    const rows = resultsByPage.get(p);
+    if (rows) allRows.push(...rows);
+  }
+
+  if (signal.aborted) {
     onProgress({
-      message: `Behandlar sida ${startPage}–${endPage} (av ${totalPages})`,
-      current: startPage - 1,
+      message: `Stoppad — ${completedCount} av ${totalPages} sidor behandlade`,
+      current: completedCount,
       total: totalPages,
       stats: { ...stats },
     });
-
-    for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
-      if (signal.aborted) break;
-
-      const imageBase64 = await renderPageToBase64(pdf, pageNum);
-      const contextHint = `This is page ${pageNum} of ${totalPages} from a PDF price list named "${file.name}".`;
-
-      try {
-        const rows = await extractFromImage(imageBase64, 'image/png', supplierHint, contextHint);
-        allRows.push(...rows);
-        hasSucceeded = true;
-        updateStats(stats, rows, `Sida ${pageNum}`);
-      } catch (err) {
-        errorCount++;
-        const lastError = err instanceof Error ? err : new Error(String(err));
-        if (!hasSucceeded) {
-          throw new Error(`AI-anrop misslyckades (sida ${pageNum}): ${lastError.message}`);
-        }
-        console.warn(`Sida ${pageNum} misslyckades, fortsätter: ${lastError.message}`);
-      }
-    }
-
-    if (!signal.aborted) {
-      onProgress({
-        message: `Sida ${startPage}–${Math.min(startPage + PAGES_PER_CHUNK - 1, totalPages)} klar (av ${totalPages})`,
-        current: Math.min(startPage + PAGES_PER_CHUNK - 1, totalPages),
-        total: totalPages,
-        stats: { ...stats },
-      });
-    }
-  }
-
-  if (errorCount > 0) {
-    console.warn(`PDF-behandling klar med ${errorCount} misslyckade sidor av ${totalPages}`);
   }
 
   return allRows;
