@@ -5,6 +5,7 @@ import { processFile } from './services/fileRouter';
 import { postProcess } from './logic/postProcess';
 import { exportToExcel } from './utils/excelExport';
 import { buildExportFilename } from './utils/dateParser';
+import { startKeepAwake, stopKeepAwake } from './utils/keepAwake';
 import { getSupplierProfile } from './config/suppliers';
 import { FileUpload } from './components/FileUpload';
 import { MappingUpload } from './components/MappingUpload';
@@ -59,77 +60,73 @@ export default function App() {
   const handleConvert = useCallback(async () => {
     if (!selectedFile) return;
 
-    // Acquire a Web Lock to prevent the browser from freezing this tab
-    // while the conversion is running in the background.
-    const runConversion = async () => {
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-      setProcessing(true);
-      setError(null);
-      setRows([]);
-      setWasAborted(false);
-      setProgress({ message: 'Förbereder...', current: 0, total: 1 });
+    // Play silent audio to prevent Chrome from freezing this tab in background
+    startKeepAwake();
 
-      let rawRows: RawExtractedRow[] = [];
+    setProcessing(true);
+    setError(null);
+    setRows([]);
+    setWasAborted(false);
+    setProgress({ message: 'Förbereder...', current: 0, total: 1 });
 
-      try {
-        rawRows = await processFile(selectedFile, supplierId, setProgress, controller.signal);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Okänt fel';
-        setError(msg);
-        setProgress(null);
-        setProcessing(false);
-        abortControllerRef.current = null;
-        return;
-      }
+    let rawRows: RawExtractedRow[] = [];
 
-      const aborted = controller.signal.aborted;
-      abortControllerRef.current = null;
-
-      if (rawRows.length === 0) {
-        if (aborted) {
-          setError('Extrahering stoppad innan några rader hittades.');
-        } else {
-          setError('Inga produktrader hittades i filen. Kontrollera att filen innehåller en prislista.');
-        }
-        setProcessing(false);
-        setProgress(null);
-        return;
-      }
-
-      setProgress({
-        message: `Efterbehandlar ${rawRows.length} rader...`,
-        current: 0,
-        total: 1,
-      });
-
-      const finalRows = postProcess(rawRows, pricingSettings, effectiveSupplierName);
-
-      setRows(finalRows);
-      setWasAborted(aborted);
-      setProgress({
-        message: aborted
-          ? `Delvis extrahering — ${finalRows.length} rader (stoppad)`
-          : `Konvertering klar — ${finalRows.length} rader`,
-        current: 1,
-        total: 1,
-      });
+    try {
+      rawRows = await processFile(selectedFile, supplierId, setProgress, controller.signal);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Okänt fel';
+      setError(msg);
+      setProgress(null);
       setProcessing(false);
-    };
-
-    // Web Locks API keeps the tab alive in background
-    if (navigator.locks) {
-      await navigator.locks.request('prislax-conversion', runConversion);
-    } else {
-      await runConversion();
+      abortControllerRef.current = null;
+      stopKeepAwake();
+      return;
     }
+
+    const aborted = controller.signal.aborted;
+    abortControllerRef.current = null;
+
+    if (rawRows.length === 0) {
+      if (aborted) {
+        setError('Extrahering stoppad innan några rader hittades.');
+      } else {
+        setError('Inga produktrader hittades i filen. Kontrollera att filen innehåller en prislista.');
+      }
+      setProcessing(false);
+      setProgress(null);
+      stopKeepAwake();
+      return;
+    }
+
+    setProgress({
+      message: `Efterbehandlar ${rawRows.length} rader...`,
+      current: 0,
+      total: 1,
+    });
+
+    const finalRows = postProcess(rawRows, pricingSettings, effectiveSupplierName);
+
+    setRows(finalRows);
+    setWasAborted(aborted);
+    setProgress({
+      message: aborted
+        ? `Delvis extrahering — ${finalRows.length} rader (stoppad)`
+        : `Konvertering klar — ${finalRows.length} rader`,
+      current: 1,
+      total: 1,
+    });
+    setProcessing(false);
+    stopKeepAwake();
   }, [selectedFile, pricingSettings, supplierId, effectiveSupplierName]);
 
   const handleStop = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
+    stopKeepAwake();
   }, []);
 
   const handleExport = useCallback(() => {
