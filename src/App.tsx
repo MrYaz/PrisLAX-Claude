@@ -5,7 +5,6 @@ import { processFile } from './services/fileRouter';
 import { postProcess } from './logic/postProcess';
 import { exportToExcel } from './utils/excelExport';
 import { buildExportFilename } from './utils/dateParser';
-import { startKeepAwake, stopKeepAwake } from './utils/keepAwake';
 import { getSupplierProfile } from './config/suppliers';
 import { FileUpload } from './components/FileUpload';
 import { MappingUpload } from './components/MappingUpload';
@@ -72,9 +71,6 @@ export default function App() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Play silent audio to prevent Chrome from freezing this tab in background
-    startKeepAwake();
-
     setProcessing(true);
     setError(null);
     setRows([]);
@@ -91,7 +87,6 @@ export default function App() {
       setProgress(null);
       setProcessing(false);
       abortControllerRef.current = null;
-      stopKeepAwake();
       return;
     }
 
@@ -106,7 +101,6 @@ export default function App() {
       }
       setProcessing(false);
       setProgress(null);
-      stopKeepAwake();
       return;
     }
 
@@ -128,14 +122,12 @@ export default function App() {
       total: 1,
     });
     setProcessing(false);
-    stopKeepAwake();
   }, [selectedFile, pricingSettings, supplierId, effectiveSupplierName]);
 
   const handleStop = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    stopKeepAwake();
   }, []);
 
   const handleExport = useCallback(() => {

@@ -1,7 +1,46 @@
-import { GoogleGenerativeAI, Part } from '@google/generative-ai';
 import type { RawExtractedRow } from '../types';
 
-let genAI: GoogleGenerativeAI | null = null;
+/**
+ * AI extraction service.
+ *
+ * All Gemini API calls are made from a Web Worker so they continue running
+ * even when the browser tab is in the background (Chrome freezes main-thread
+ * JS in background tabs but never throttles Web Workers).
+ */
+
+let worker: Worker | null = null;
+let nextId = 0;
+const pending = new Map<number, {
+  resolve: (rows: RawExtractedRow[]) => void;
+  reject: (err: Error) => void;
+}>();
+
+function getWorker(): Worker {
+  if (!worker) {
+    worker = new Worker(
+      new URL('./aiWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+    worker.onmessage = (e) => {
+      const { id, type, rows, message } = e.data;
+      const p = pending.get(id);
+      if (!p) return;
+      pending.delete(id);
+      if (type === 'result') {
+        p.resolve(normalizeRows(rows ?? []));
+      } else {
+        p.reject(new Error(message ?? 'Worker error'));
+      }
+    };
+    worker.onerror = (e) => {
+      // Reject all pending requests
+      const err = new Error(e.message || 'Worker crashed');
+      for (const p of pending.values()) p.reject(err);
+      pending.clear();
+    };
+  }
+  return worker;
+}
 
 function getApiKey(): string {
   const key = import.meta.env.VITE_API_KEY as string | undefined;
@@ -15,13 +54,6 @@ function getApiKey(): string {
 
 export function validateApiKey(): void {
   getApiKey();
-}
-
-function getClient(): GoogleGenerativeAI {
-  if (!genAI) {
-    genAI = new GoogleGenerativeAI(getApiKey());
-  }
-  return genAI;
 }
 
 const EXTRACTION_PROMPT = `You are a data extraction assistant. Your ONLY job is to look at this document content and extract every product/article row you can find.
@@ -81,27 +113,15 @@ function buildPrompt(supplierHint: string, contextHint: string): string {
   return parts.join('\n');
 }
 
-const MAX_RETRIES = 3;
-const INITIAL_BACKOFF_MS = 2000;
-
 /**
- * Retry a Gemini API call with exponential backoff on 429 (rate limit) errors.
+ * Send an extraction request to the Web Worker and wait for the result.
  */
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-  let lastError: Error | null = null;
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      const is429 = lastError.message.includes('429') || lastError.message.includes('Resource exhausted');
-      if (!is429 || attempt === MAX_RETRIES) throw lastError;
-      const delay = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
-      console.warn(`Rate limited (429), retry ${attempt + 1}/${MAX_RETRIES} in ${delay}ms...`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-  throw lastError;
+function sendToWorker(msg: Record<string, unknown>): Promise<RawExtractedRow[]> {
+  const id = nextId++;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    getWorker().postMessage({ ...msg, id, apiKey: getApiKey() });
+  });
 }
 
 /**
@@ -113,22 +133,12 @@ export async function extractFromImage(
   supplierHint: string,
   contextHint: string
 ): Promise<RawExtractedRow[]> {
-  return withRetry(async () => {
-    const client = getClient();
-    const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-    const prompt = buildPrompt(supplierHint, contextHint);
-
-    const imagePart: Part = {
-      inlineData: {
-        mimeType,
-        data: imageBase64,
-      },
-    };
-
-    const result = await model.generateContent([prompt, imagePart]);
-    const text = result.response.text().trim();
-    return parseAIResponse(text);
+  const prompt = buildPrompt(supplierHint, contextHint);
+  return sendToWorker({
+    type: 'extract-image',
+    imageBase64,
+    mimeType,
+    prompt,
   });
 }
 
@@ -140,30 +150,21 @@ export async function extractFromText(
   supplierHint: string,
   contextHint: string
 ): Promise<RawExtractedRow[]> {
-  return withRetry(async () => {
-    const client = getClient();
-    const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-    const prompt = buildPrompt(supplierHint, contextHint);
-    const fullPrompt = `${prompt}\n\nHere is the document content:\n\n${textContent}`;
-
-    const result = await model.generateContent(fullPrompt);
-    const text = result.response.text().trim();
-    return parseAIResponse(text);
+  const prompt = buildPrompt(supplierHint, contextHint);
+  return sendToWorker({
+    type: 'extract-text',
+    textContent,
+    prompt,
   });
 }
 
-function parseAIResponse(text: string): RawExtractedRow[] {
-  let cleaned = text;
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
-  }
-
-  try {
-    const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.map((row: Record<string, unknown>) => ({
+/**
+ * Normalize raw JSON rows from the worker into typed RawExtractedRow[].
+ */
+function normalizeRows(raw: unknown[]): RawExtractedRow[] {
+  return raw.map((r: unknown) => {
+    const row = r as Record<string, unknown>;
+    return {
       artikelnr: String(row.artikelnr ?? '').replace(/\s+/g, '').trim(),
       benamning: String(row.benamning ?? '').trim(),
       varugrupp: String(row.varugrupp ?? '').trim(),
@@ -188,9 +189,6 @@ function parseAIResponse(text: string): RawExtractedRow[] {
       fitsProducts: Array.isArray(row.fitsProducts)
         ? row.fitsProducts.map((p: unknown) => String(p).trim())
         : [],
-    }));
-  } catch {
-    console.error('Failed to parse AI response:', cleaned.substring(0, 500));
-    return [];
-  }
+    };
+  });
 }
