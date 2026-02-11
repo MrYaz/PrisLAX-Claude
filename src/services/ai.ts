@@ -6,14 +6,29 @@ import type { RawExtractedRow } from '../types';
  * All Gemini API calls are made from a Web Worker so they continue running
  * even when the browser tab is in the background (Chrome freezes main-thread
  * JS in background tabs but never throttles Web Workers).
+ *
+ * The primary API is extractBatch() which sends ALL work to the worker at
+ * once, letting the worker handle concurrency internally. This means the
+ * main thread does NOT need to stay awake to dispatch new tasks.
  */
 
 let worker: Worker | null = null;
 let nextId = 0;
+
+// Pending single requests (legacy, used by validateApiKey)
 const pending = new Map<number, {
   resolve: (rows: RawExtractedRow[]) => void;
   reject: (err: Error) => void;
 }>();
+
+// Pending batch requests
+interface BatchPending {
+  onTaskDone: (taskId: number, rows: RawExtractedRow[], label: string) => void;
+  onTaskError: (taskId: number, error: Error, label: string) => void;
+  resolve: (result: { succeeded: number; failed: number }) => void;
+  reject: (err: Error) => void;
+}
+const batchPending = new Map<number, BatchPending>();
 
 function getWorker(): Worker {
   if (!worker) {
@@ -22,21 +37,40 @@ function getWorker(): Worker {
       { type: 'module' }
     );
     worker.onmessage = (e) => {
-      const { id, type, rows, message } = e.data;
-      const p = pending.get(id);
-      if (!p) return;
-      pending.delete(id);
-      if (type === 'result') {
-        p.resolve(normalizeRows(rows ?? []));
-      } else {
-        p.reject(new Error(message ?? 'Worker error'));
+      const data = e.data;
+
+      // Single request responses
+      if (data.type === 'result' || data.type === 'error') {
+        const p = pending.get(data.id);
+        if (!p) return;
+        pending.delete(data.id);
+        if (data.type === 'result') {
+          p.resolve(normalizeRows(data.rows ?? []));
+        } else {
+          p.reject(new Error(data.message ?? 'Worker error'));
+        }
+        return;
+      }
+
+      // Batch responses
+      const bp = batchPending.get(data.id);
+      if (!bp) return;
+
+      if (data.type === 'batch-task-done') {
+        bp.onTaskDone(data.taskId, normalizeRows(data.rows ?? []), data.label);
+      } else if (data.type === 'batch-task-error') {
+        bp.onTaskError(data.taskId, new Error(data.message ?? 'Task error'), data.label);
+      } else if (data.type === 'batch-done') {
+        batchPending.delete(data.id);
+        bp.resolve({ succeeded: data.succeeded, failed: data.failed });
       }
     };
     worker.onerror = (e) => {
-      // Reject all pending requests
       const err = new Error(e.message || 'Worker crashed');
       for (const p of pending.values()) p.reject(err);
       pending.clear();
+      for (const bp of batchPending.values()) bp.reject(err);
+      batchPending.clear();
     };
   }
   return worker;
@@ -102,7 +136,7 @@ If no products found, return: []`;
  * Build the full prompt by combining the base extraction prompt,
  * supplier-specific hint, and page/sheet context hint.
  */
-function buildPrompt(supplierHint: string, contextHint: string): string {
+export function buildPrompt(supplierHint: string, contextHint: string): string {
   const parts = [EXTRACTION_PROMPT];
   if (supplierHint) {
     parts.push(`\nSUPPLIER-SPECIFIC GUIDANCE:\n${supplierHint}`);
@@ -113,9 +147,52 @@ function buildPrompt(supplierHint: string, contextHint: string): string {
   return parts.join('\n');
 }
 
+// ─── Batch task type (matches worker's BatchTaskItem) ───
+
+export interface BatchTask {
+  taskId: number;
+  kind: 'image' | 'text';
+  imageBase64?: string;
+  mimeType?: string;
+  textContent?: string;
+  prompt: string;
+  label: string;
+}
+
 /**
- * Send an extraction request to the Web Worker and wait for the result.
+ * Send an entire batch of extraction tasks to the Web Worker.
+ *
+ * The worker handles concurrency internally — the main thread does NOT need
+ * to stay awake between tasks. Progress callbacks fire as each task completes.
  */
+export function extractBatch(
+  tasks: BatchTask[],
+  concurrency: number,
+  callbacks: {
+    onTaskDone: (taskId: number, rows: RawExtractedRow[], label: string) => void;
+    onTaskError: (taskId: number, error: Error, label: string) => void;
+  }
+): Promise<{ succeeded: number; failed: number }> {
+  const id = nextId++;
+  return new Promise((resolve, reject) => {
+    batchPending.set(id, {
+      onTaskDone: callbacks.onTaskDone,
+      onTaskError: callbacks.onTaskError,
+      resolve,
+      reject,
+    });
+    getWorker().postMessage({
+      type: 'process-batch',
+      id,
+      tasks,
+      concurrency,
+      apiKey: getApiKey(),
+    });
+  });
+}
+
+// ─── Single request API (kept for simple cases) ───
+
 function sendToWorker(msg: Record<string, unknown>): Promise<RawExtractedRow[]> {
   const id = nextId++;
   return new Promise((resolve, reject) => {
@@ -124,9 +201,6 @@ function sendToWorker(msg: Record<string, unknown>): Promise<RawExtractedRow[]> 
   });
 }
 
-/**
- * Extract product rows from an image (rendered PDF page, photo, etc.)
- */
 export async function extractFromImage(
   imageBase64: string,
   mimeType: string,
@@ -142,9 +216,6 @@ export async function extractFromImage(
   });
 }
 
-/**
- * Extract product rows from text content (Excel sheet data, Word text, etc.)
- */
 export async function extractFromText(
   textContent: string,
   supplierHint: string,

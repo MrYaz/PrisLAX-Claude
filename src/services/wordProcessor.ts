@@ -1,7 +1,6 @@
 import mammoth from 'mammoth';
 import type { RawExtractedRow, ProgressInfo, ExtractionStats } from '../types';
-import { extractFromText } from './ai';
-import { runParallel, type ParallelTask } from './parallelRunner';
+import { extractBatch, buildPrompt, type BatchTask } from './ai';
 
 const MAX_CHARS_PER_CHUNK = 8000;
 const CONCURRENCY = 2;
@@ -50,7 +49,7 @@ export async function processWord(
     return [];
   }
 
-  // Split into chunks
+  // ── Phase 1: Split into chunks (fast, no API calls) ──
   const paragraphs = text.split('\n');
   const textChunks: string[] = [];
   let currentChunk = '';
@@ -66,23 +65,25 @@ export async function processWord(
 
   const totalChunks = textChunks.length;
 
-  // Create parallel tasks
-  const tasks: ParallelTask<{ chunkIndex: number; rows: RawExtractedRow[] }>[] = textChunks.map(
-    (chunkText, i) => ({
-      label: `Del ${i + 1}`,
-      run: async () => {
-        const contextHint = `This text comes from a Word document named "${file.name}", part ${i + 1} of ${totalChunks}.`;
-        const rows = await extractFromText(chunkText, supplierHint, contextHint);
-        return { chunkIndex: i, rows };
-      },
-    })
-  );
+  if (signal.aborted) return [];
+
+  // ── Phase 2: Send entire batch to worker ──
+  const batchTasks: BatchTask[] = textChunks.map((chunkText, i) => ({
+    taskId: i,
+    kind: 'text' as const,
+    textContent: chunkText,
+    prompt: buildPrompt(
+      supplierHint,
+      `This text comes from a Word document named "${file.name}", part ${i + 1} of ${totalChunks}.`
+    ),
+    label: `Del ${i + 1}`,
+  }));
 
   let completedCount = 0;
   const active = Math.min(CONCURRENCY, totalChunks);
 
   onProgress({
-    message: `Analyserar Word-dokument (${totalChunks} delar, ${active} parallellt)...`,
+    message: `Analyserar Word-dokument (${totalChunks} delar, ${active} parallellt i bakgrunden)...`,
     current: 0,
     total: totalChunks,
     stats: { ...stats },
@@ -90,13 +91,11 @@ export async function processWord(
 
   const resultsByChunk = new Map<number, RawExtractedRow[]>();
 
-  const { succeeded, firstError } = await runParallel(tasks, {
-    concurrency: CONCURRENCY,
-    signal,
-    onTaskDone: (res, _index, label) => {
-      resultsByChunk.set(res.chunkIndex, res.rows);
+  const { succeeded } = await extractBatch(batchTasks, CONCURRENCY, {
+    onTaskDone: (taskId, rows, label) => {
+      resultsByChunk.set(taskId, rows);
       completedCount++;
-      updateStats(stats, res.rows, label);
+      updateStats(stats, rows, label);
       onProgress({
         message: `${label} klar (${completedCount} av ${totalChunks})`,
         current: completedCount,
@@ -104,9 +103,9 @@ export async function processWord(
         stats: { ...stats },
       });
     },
-    onTaskError: (error, _index, label) => {
+    onTaskError: (taskId, error, label) => {
       completedCount++;
-      console.warn(`${label} misslyckades: ${error.message}`);
+      console.warn(`Del ${taskId + 1} misslyckades: ${error.message}`);
       onProgress({
         message: `${label} misslyckades (${completedCount} av ${totalChunks})`,
         current: completedCount,
@@ -116,8 +115,8 @@ export async function processWord(
     },
   });
 
-  if (succeeded === 0 && firstError) {
-    throw new Error(`AI-anrop misslyckades: ${firstError.message}`);
+  if (succeeded === 0) {
+    throw new Error('AI-anrop misslyckades för alla delar');
   }
 
   // Combine results in order

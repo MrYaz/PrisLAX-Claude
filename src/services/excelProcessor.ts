@@ -1,7 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { RawExtractedRow, ProgressInfo, ExtractionStats } from '../types';
-import { extractFromText } from './ai';
-import { runParallel, type ParallelTask } from './parallelRunner';
+import { extractBatch, buildPrompt, type BatchTask } from './ai';
 
 const NON_CATEGORY_NAMES = new Set([
   'info', 'villkor', 'blad1', 'blad2', 'blad3',
@@ -62,7 +61,7 @@ export async function processExcel(
     stats: { ...stats },
   });
 
-  // Pre-parse all sheets into text chunks (fast, no API calls)
+  // ── Phase 1: Pre-parse all sheets into text chunks (fast, no API calls) ──
   const chunks: TextChunk[] = [];
   for (let i = 0; i < totalSheets; i++) {
     const sheetName = sheetNames[i];
@@ -104,22 +103,22 @@ export async function processExcel(
   const totalChunks = chunks.length;
   if (totalChunks === 0) return [];
 
-  // Create parallel tasks
-  const tasks: ParallelTask<{ chunkIndex: number; rows: RawExtractedRow[] }>[] = chunks.map(
-    (chunk) => ({
-      label: chunk.label,
-      run: async () => {
-        const rows = await extractFromText(chunk.text, supplierHint, chunk.contextHint);
-        return { chunkIndex: chunk.chunkIndex, rows };
-      },
-    })
-  );
+  if (signal.aborted) return [];
+
+  // ── Phase 2: Send entire batch to worker ──
+  const batchTasks: BatchTask[] = chunks.map((chunk) => ({
+    taskId: chunk.chunkIndex,
+    kind: 'text' as const,
+    textContent: chunk.text,
+    prompt: buildPrompt(supplierHint, chunk.contextHint),
+    label: chunk.label,
+  }));
 
   let completedCount = 0;
   const active = Math.min(CONCURRENCY, totalChunks);
 
   onProgress({
-    message: `Analyserar ${totalChunks} delar (${active} parallellt)...`,
+    message: `Analyserar ${totalChunks} delar (${active} parallellt i bakgrunden)...`,
     current: 0,
     total: totalChunks,
     stats: { ...stats },
@@ -127,13 +126,11 @@ export async function processExcel(
 
   const resultsByChunk = new Map<number, RawExtractedRow[]>();
 
-  const { succeeded, firstError } = await runParallel(tasks, {
-    concurrency: CONCURRENCY,
-    signal,
-    onTaskDone: (result, _index, label) => {
-      resultsByChunk.set(result.chunkIndex, result.rows);
+  const { succeeded } = await extractBatch(batchTasks, CONCURRENCY, {
+    onTaskDone: (taskId, rows, label) => {
+      resultsByChunk.set(taskId, rows);
       completedCount++;
-      updateStats(stats, result.rows, label);
+      updateStats(stats, rows, label);
       onProgress({
         message: `${label} klar (${completedCount} av ${totalChunks})`,
         current: completedCount,
@@ -141,9 +138,9 @@ export async function processExcel(
         stats: { ...stats },
       });
     },
-    onTaskError: (error, _index, label) => {
+    onTaskError: (taskId, error, label) => {
       completedCount++;
-      console.warn(`${label} misslyckades: ${error.message}`);
+      console.warn(`Chunk ${taskId} misslyckades: ${error.message}`);
       onProgress({
         message: `${label} misslyckades (${completedCount} av ${totalChunks})`,
         current: completedCount,
@@ -153,8 +150,8 @@ export async function processExcel(
     },
   });
 
-  if (succeeded === 0 && firstError) {
-    throw new Error(`AI-anrop misslyckades: ${firstError.message}`);
+  if (succeeded === 0) {
+    throw new Error('AI-anrop misslyckades för alla delar');
   }
 
   // Combine results in chunk order

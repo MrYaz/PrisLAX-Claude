@@ -4,11 +4,16 @@
  * Web Workers run in a separate thread that Chrome NEVER throttles or freezes,
  * even when the tab is in the background. This guarantees that long-running
  * conversions complete regardless of tab focus.
+ *
+ * Supports both single requests and batch processing with internal concurrency.
  */
 
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 2000;
+const STAGGER_MS = 500;
+
+// ─── Single request types (kept for backwards compat / validateApiKey) ───
 
 interface ExtractImageMsg {
   type: 'extract-image';
@@ -27,10 +32,39 @@ interface ExtractTextMsg {
   apiKey: string;
 }
 
-type WorkerMessage = ExtractImageMsg | ExtractTextMsg;
+// ─── Batch processing types ───
+
+interface BatchTaskItem {
+  taskId: number;
+  kind: 'image' | 'text';
+  imageBase64?: string;
+  mimeType?: string;
+  textContent?: string;
+  prompt: string;
+  label: string;
+}
+
+interface ProcessBatchMsg {
+  type: 'process-batch';
+  id: number;
+  tasks: BatchTaskItem[];
+  concurrency: number;
+  apiKey: string;
+}
+
+type WorkerMessage = ExtractImageMsg | ExtractTextMsg | ProcessBatchMsg;
+
+// ─── Message handler ───
 
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   const msg = e.data;
+
+  if (msg.type === 'process-batch') {
+    await handleBatch(msg);
+    return;
+  }
+
+  // Single request (legacy)
   try {
     let text: string;
     if (msg.type === 'extract-image') {
@@ -50,6 +84,77 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     self.postMessage({ type: 'error', id: msg.id, message });
   }
 };
+
+// ─── Batch processing ───
+
+async function handleBatch(msg: ProcessBatchMsg): Promise<void> {
+  const { id, tasks, concurrency, apiKey } = msg;
+
+  let nextIndex = 0;
+  let succeeded = 0;
+  let failed = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      const idx = nextIndex++;
+      if (idx >= tasks.length) return;
+
+      const task = tasks[idx];
+      try {
+        let text: string;
+        if (task.kind === 'image') {
+          text = await callGemini(apiKey, [
+            { text: task.prompt },
+            { inlineData: { mimeType: task.mimeType ?? 'image/png', data: task.imageBase64 ?? '' } },
+          ]);
+        } else {
+          text = await callGemini(apiKey, [
+            { text: `${task.prompt}\n\nHere is the document content:\n\n${task.textContent ?? ''}` },
+          ]);
+        }
+        const rows = parseResponse(text);
+        succeeded++;
+        self.postMessage({
+          type: 'batch-task-done',
+          id,
+          taskId: task.taskId,
+          rows,
+          label: task.label,
+        });
+      } catch (err) {
+        failed++;
+        const message = err instanceof Error ? err.message : String(err);
+        self.postMessage({
+          type: 'batch-task-error',
+          id,
+          taskId: task.taskId,
+          message,
+          label: task.label,
+        });
+
+        // If nothing has succeeded yet and we've had failures, stop early
+        if (succeeded === 0 && failed >= concurrency) return;
+      }
+    }
+  }
+
+  const workerCount = Math.min(concurrency, tasks.length);
+  // Stagger worker starts to avoid burst API calls
+  await Promise.all(
+    Array.from({ length: workerCount }, (_, i) =>
+      new Promise<void>((resolve) => setTimeout(resolve, i * STAGGER_MS)).then(() => worker())
+    )
+  );
+
+  self.postMessage({
+    type: 'batch-done',
+    id,
+    succeeded,
+    failed,
+  });
+}
+
+// ─── Gemini API call with retry ───
 
 async function callGemini(apiKey: string, parts: unknown[]): Promise<string> {
   let lastError: Error | null = null;
@@ -83,6 +188,8 @@ async function callGemini(apiKey: string, parts: unknown[]): Promise<string> {
 
   throw lastError;
 }
+
+// ─── Response parsing ───
 
 function parseResponse(text: string): unknown[] {
   let cleaned = text;

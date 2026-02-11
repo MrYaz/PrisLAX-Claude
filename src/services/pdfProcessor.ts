@@ -1,7 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import type { RawExtractedRow, ProgressInfo, ExtractionStats } from '../types';
-import { extractFromImage } from './ai';
-import { runParallel, type ParallelTask } from './parallelRunner';
+import { extractBatch, buildPrompt, type BatchTask } from './ai';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
@@ -44,47 +43,61 @@ export async function processPdf(
   };
 
   onProgress({
-    message: `PDF laddad: ${totalPages} sidor`,
+    message: `PDF laddad: ${totalPages} sidor — renderar alla sidor...`,
     current: 0,
     total: totalPages,
     stats: { ...stats },
   });
 
-  // Build one task per page — each task renders + sends to Gemini
-  const tasks: ParallelTask<{ pageNum: number; rows: RawExtractedRow[] }>[] = [];
+  // ── Phase 1: Pre-render ALL pages to base64 (fast, main thread) ──
+  const renderedPages: { pageNum: number; base64: string }[] = [];
   for (let p = 1; p <= totalPages; p++) {
-    const pageNum = p;
-    tasks.push({
-      label: `Sida ${pageNum}`,
-      run: async () => {
-        const base64 = await renderPageToBase64(pdf, pageNum);
-        const contextHint = `This is page ${pageNum} of ${totalPages} from a PDF price list named "${file.name}".`;
-        const rows = await extractFromImage(base64, 'image/png', supplierHint, contextHint);
-        return { pageNum, rows };
-      },
+    if (signal.aborted) break;
+    const base64 = await renderPageToBase64(pdf, p);
+    renderedPages.push({ pageNum: p, base64 });
+    onProgress({
+      message: `Renderat sida ${p} av ${totalPages}...`,
+      current: 0,
+      total: totalPages,
+      stats: { ...stats },
     });
   }
+
+  if (signal.aborted || renderedPages.length === 0) {
+    return [];
+  }
+
+  // ── Phase 2: Send entire batch to worker ──
+  // Build all tasks upfront — the worker handles concurrency internally
+  const batchTasks: BatchTask[] = renderedPages.map(({ pageNum, base64 }) => ({
+    taskId: pageNum,
+    kind: 'image' as const,
+    imageBase64: base64,
+    mimeType: 'image/png',
+    prompt: buildPrompt(
+      supplierHint,
+      `This is page ${pageNum} of ${totalPages} from a PDF price list named "${file.name}".`
+    ),
+    label: `Sida ${pageNum}`,
+  }));
 
   let completedCount = 0;
   const active = Math.min(CONCURRENCY, totalPages);
 
   onProgress({
-    message: `Analyserar ${totalPages} sidor (${active} parallellt)...`,
+    message: `Analyserar ${totalPages} sidor (${active} parallellt i bakgrunden)...`,
     current: 0,
     total: totalPages,
     stats: { ...stats },
   });
 
-  // Results indexed by page number to preserve order
   const resultsByPage = new Map<number, RawExtractedRow[]>();
 
-  const { succeeded, firstError } = await runParallel(tasks, {
-    concurrency: CONCURRENCY,
-    signal,
-    onTaskDone: (result, _index, label) => {
-      resultsByPage.set(result.pageNum, result.rows);
+  const { succeeded } = await extractBatch(batchTasks, CONCURRENCY, {
+    onTaskDone: (taskId, rows, label) => {
+      resultsByPage.set(taskId, rows);
       completedCount++;
-      updateStats(stats, result.rows, label);
+      updateStats(stats, rows, label);
       onProgress({
         message: `${label} klar (${completedCount} av ${totalPages})`,
         current: completedCount,
@@ -92,9 +105,9 @@ export async function processPdf(
         stats: { ...stats },
       });
     },
-    onTaskError: (error, _index, label) => {
+    onTaskError: (taskId, error, label) => {
       completedCount++;
-      console.warn(`${label} misslyckades: ${error.message}`);
+      console.warn(`Sida ${taskId} misslyckades: ${error.message}`);
       onProgress({
         message: `${label} misslyckades (${completedCount} av ${totalPages})`,
         current: completedCount,
@@ -104,8 +117,8 @@ export async function processPdf(
     },
   });
 
-  if (succeeded === 0 && firstError) {
-    throw new Error(`AI-anrop misslyckades: ${firstError.message}`);
+  if (succeeded === 0) {
+    throw new Error('AI-anrop misslyckades för alla sidor');
   }
 
   // Combine results in page order
