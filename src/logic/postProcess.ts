@@ -32,7 +32,7 @@ export function postProcess(
     rabattProcent: '',
     nettoprisSEK: raw.pris,
     vikt: raw.vikt,
-    volym: normalizeVolume(raw.volym),
+    volym: calculateVolume(raw.hojd, raw.bredd, raw.djup),
     hojd: raw.hojd || '',
     bredd: raw.bredd || '',
     djup: raw.djup || '',
@@ -61,40 +61,24 @@ export function postProcess(
 }
 
 /**
- * Normalize volume to cubic meters.
- * Handles values like "350 liter", "0.35 m³", "350L", etc.
+ * Calculate outer volume in m³ from dimensions in mm.
+ * Formula: (höjd × bredd × djup) / 1 000 000 000
  */
-function normalizeVolume(vol: string): string {
-  if (!vol) return '';
+function calculateVolume(hojd: string, bredd: string, djup: string): string {
+  const h = parseMm(hojd);
+  const b = parseMm(bredd);
+  const d = parseMm(djup);
+  if (!h || !b || !d) return '';
+  const m3 = (h * b * d) / 1_000_000_000;
+  // Show enough decimals to be meaningful (e.g. 0.072)
+  return parseFloat(m3.toFixed(4)).toString();
+}
 
-  const cleaned = vol.toLowerCase().trim();
-
-  // Check if already in m³
-  if (cleaned.includes('m³') || cleaned.includes('m3') || cleaned.includes('kbm')) {
-    const num = parseFloat(cleaned.replace(/[^\d.,]/g, '').replace(',', '.'));
-    if (!isNaN(num)) return num.toString();
-  }
-
-  // Check if in liters
-  if (cleaned.includes('liter') || cleaned.includes('l')) {
-    const num = parseFloat(cleaned.replace(/[^\d.,]/g, '').replace(',', '.'));
-    if (!isNaN(num)) return (num / 1000).toString();
-  }
-
-  // Check if in dm³
-  if (cleaned.includes('dm')) {
-    const num = parseFloat(cleaned.replace(/[^\d.,]/g, '').replace(',', '.'));
-    if (!isNaN(num)) return (num / 1000).toString();
-  }
-
-  // Just a number – assume m³ if small, liters if large
-  const num = parseFloat(cleaned.replace(/[^\d.,]/g, '').replace(',', '.'));
-  if (!isNaN(num)) {
-    if (num > 10) return (num / 1000).toString(); // Likely liters
-    return num.toString(); // Likely already m³
-  }
-
-  return '';
+/** Parse a mm value from a string, stripping units and handling commas. */
+function parseMm(val: string): number {
+  if (!val) return 0;
+  const cleaned = val.replace(/[^\d.,]/g, '').replace(',', '.');
+  return parseFloat(cleaned) || 0;
 }
 
 /**
