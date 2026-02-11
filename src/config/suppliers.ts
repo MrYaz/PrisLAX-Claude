@@ -14,6 +14,7 @@ export const SUPPLIER_PROFILES: SupplierProfile[] = [
   {
     id: 'profsafe',
     name: 'Profsafe',
+    defaultDiscount: 45,
     defaultHint: `This is a Profsafe price list. Profsafe sells security cabinets, safes, and related accessories.
 Product categories often include: Säkerhetsskåp, Dokumentskåp, Brandskåp, Vapenskåp, Nyckelskåp.
 Accessories include things like: locks (kodlås, nyckellås, elkodlås), shelves (hyllor), holders, brackets.`,
@@ -56,42 +57,49 @@ These offset tables list accessories that belong to the main products on the sam
   {
     id: 'grimstorp',
     name: 'Grimstorp',
+    defaultDiscount: 35,
     defaultHint: 'This is a Grimstorp price list.',
     extractionHints: {},
   },
   {
     id: 'businesstonordic',
     name: 'Business To Nordic',
+    defaultDiscount: 0,
     defaultHint: 'This is a Business To Nordic price list.',
     extractionHints: {},
   },
   {
     id: 'creone',
     name: 'Creone',
+    defaultDiscount: 0,
     defaultHint: 'This is a Creone price list.',
     extractionHints: {},
   },
   {
     id: 'altikon',
     name: 'Altikon',
+    defaultDiscount: 0,
     defaultHint: 'This is an Altikon price list.',
     extractionHints: {},
   },
   {
     id: 'jiwa',
     name: 'JiWa',
+    defaultDiscount: 33,
     defaultHint: 'This is a JiWa price list.',
     extractionHints: {},
   },
   {
     id: 'formcase',
     name: 'Formcase',
+    defaultDiscount: 0,
     defaultHint: 'This is a Formcase price list.',
     extractionHints: {},
   },
   {
     id: 'generic',
     name: 'Övrig leverantör',
+    defaultDiscount: 0,
     defaultHint: '',
     extractionHints: {},
   },

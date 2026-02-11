@@ -42,6 +42,15 @@ export default function App() {
     loadBaseMappings().then(() => setBaseMappingLoaded(true));
   }, []);
 
+  const handleSupplierChange = useCallback((newId: string) => {
+    setSupplierId(newId);
+    const profile = getSupplierProfile(newId);
+    setPricingSettings((prev) => ({
+      ...prev,
+      dealerDiscount: profile.defaultDiscount,
+    }));
+  }, []);
+
   const effectiveSupplierName =
     supplierId === 'generic'
       ? customSupplierName
@@ -168,7 +177,7 @@ export default function App() {
           <SupplierSelect
             value={supplierId}
             customName={customSupplierName}
-            onChange={setSupplierId}
+            onChange={handleSupplierChange}
             onCustomNameChange={setCustomSupplierName}
             disabled={processing}
           />

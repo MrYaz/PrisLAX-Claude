@@ -121,6 +121,8 @@ export interface SupplierProfile {
   extractionHints: Partial<Record<SupportedFileType, string>>;
   /** Default hint used when no file-type-specific hint exists */
   defaultHint: string;
+  /** Default dealer discount percentage for this supplier (0-100) */
+  defaultDiscount: number;
 }
 
 export const OUTPUT_COLUMNS = [
