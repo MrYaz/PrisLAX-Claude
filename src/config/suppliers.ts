@@ -36,6 +36,9 @@ ACCESSORY ARTICLE NUMBERS:
 - For accessories in the matrix, the article number is printed in the LOWER part of the same table cell as the accessory price.
 - Look carefully inside each price cell for a small article number below or next to the price value. That is the accessory's artikelnr.
 
+"Standard" CELLS — SKIP THEM:
+- If a matrix cell contains ONLY the word "Standard" (no price), it means that accessory is included by default with that main product. Do NOT extract it as a separate row. Skip that cell entirely.
+
 IMPORTANT — Validate each "benamning" before finalizing:
 - For main products: the benamning should be a real product name (e.g., "Säkerhetsskåp SA210", "Dokumentskåp DS200"), NOT a column header, category title, or page label.
 - For accessories: the benamning should describe the accessory itself (e.g., "Elkodlås 1+1 kod", "Hyllplan extra"), NOT the main product it fits. The main product goes in fitsProducts.
