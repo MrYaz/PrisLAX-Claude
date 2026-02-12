@@ -87,10 +87,12 @@ function applySpecialPrices(
   }
 
   return rows.map((row) => {
-    const key = normalizeArt(row.ertArtikelnr);
-    if (!key) return row;
+    // Try matching on ertArtikelnr first, then vartArtikelnr as fallback
+    const key1 = normalizeArt(row.ertArtikelnr);
+    const key2 = normalizeArt(row.vartArtikelnr);
 
-    const specialPrice = priceMap.get(key);
+    const specialPrice = (key1 ? priceMap.get(key1) : undefined)
+      ?? (key2 ? priceMap.get(key2) : undefined);
     if (specialPrice === undefined) return row;
 
     // Calculate discounted special price
@@ -111,9 +113,13 @@ function applySpecialPrices(
   });
 }
 
-/** Normalize article number for matching: lowercase, no spaces, no trailing * */
+/**
+ * Normalize article number for matching.
+ * Strip all non-alphanumeric characters so that formatting differences
+ * (dashes, slashes, dots, spaces, trailing *) don't prevent matches.
+ */
 function normalizeArt(art: string): string {
-  return art.toLowerCase().replace(/\s+/g, '').replace(/\*+$/, '');
+  return art.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /**

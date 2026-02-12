@@ -40,6 +40,23 @@ ACCESSORY ARTICLE NUMBERS:
 "Standard" CELLS — SKIP THEM:
 - If a matrix cell contains ONLY the word "Standard" (no price), it means that accessory is included by default with that main product. Do NOT extract it as a separate row. Skip that cell entirely.
 
+LOCK TYPE (LÅSNING) IN LEFTMOST COLUMN:
+- Some tables have a "Låsning" or lock type column as the LEFTMOST column (e.g., "Nyckellås", "Kodlås", "Elkodlås", "Nyckellås med vred", "Elektroniskt kodlås").
+- When the lock type appears at the far LEFT of the table header and data rows, it describes a VARIANT of the main product. It is NOT the product name itself.
+- In this case, APPEND the lock type at the END of benamning, separated by a comma.
+- Example: main product is "Säkerhetsskåp SA210" and the leftmost column says "Nyckellås" → benamning: "Säkerhetsskåp SA210, Nyckellås"
+- Example: main product is "Dokumentskåp DS200" and leftmost column says "Elkodlås" → benamning: "Dokumentskåp DS200, Elkodlås"
+- Do NOT put the lock type first: "Nyckellås Säkerhetsskåp SA210" is WRONG.
+- Each lock type variant with its own price is a SEPARATE product row — extract every variant.
+
+FIND ALL ARTICLES — Be thorough:
+- Extract products from EVERY table on EVERY page. Do not skip any section.
+- Some pages have multiple separate tables or product groups — extract from ALL of them.
+- Products may appear in both matrix format AND list format on the same page.
+- If a row has an article number AND a price, it is a product — extract it even if it looks like a sub-header.
+- Pay attention to smaller tables, side sections, and footnote tables listing additional variants, sizes, or options.
+- Each unique combination of article number + lock type + size is a separate product.
+
 IMPORTANT — Validate each "benamning" before finalizing:
 - For main products: the benamning should be a real product name (e.g., "Säkerhetsskåp SA210", "Dokumentskåp DS200"), NOT a column header, category title, or page label.
 - For accessories: the benamning should describe the accessory itself (e.g., "Elkodlås 1+1 kod", "Hyllplan extra"), NOT the main product it fits. The main product goes in fitsProducts.

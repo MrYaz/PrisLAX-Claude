@@ -63,15 +63,16 @@ export async function parseSpecialPriceFile(file: File): Promise<SpecialPriceDat
 
     const artValue = artCell ? String(artCell.v ?? '').trim() : '';
     const priceValue = priceCell ? parseNumber(priceCell.v) : 0;
-    const discountValue = discountCell ? parseNumber(discountCell.v) : 0;
+    // Discount column: Excel stores percentages as decimals (0.45 = 45%)
+    const discountValue = discountCell ? parsePercentage(discountCell) : 0;
 
     // Check if this is the general discount row ("Rabatt på övrigt sortiment")
     if (isGeneralDiscountRow(artValue, r, range.s.r)) {
       if (discountValue > 0) {
         generalDiscount = discountValue;
-      } else if (priceValue > 0 && priceValue <= 100) {
+      } else if (priceCell) {
         // Sometimes the % is in the price column
-        generalDiscount = priceValue;
+        generalDiscount = parsePercentage(priceCell);
       }
       continue;
     }
@@ -128,6 +129,27 @@ function isGeneralDiscountRow(artValue: string, _row: number, _headerRow: number
     lower.includes('övriga artiklar') ||
     lower.includes('generell rabatt')
   );
+}
+
+/**
+ * Parse a percentage value from an Excel cell.
+ * Excel stores percentage-formatted cells as decimals (45% → 0.45).
+ * We detect this via the formatted text (cell.w) or by heuristic.
+ */
+function parsePercentage(cell: { v?: unknown; w?: string }): number {
+  // If formatted text is available and contains %, parse from that
+  if (cell.w && cell.w.includes('%')) {
+    const clean = cell.w.replace(/\s/g, '').replace(',', '.').replace('%', '');
+    return parseFloat(clean) || 0;
+  }
+
+  // If raw value is a number that looks like a decimal percentage (0 < x < 1)
+  if (typeof cell.v === 'number') {
+    if (cell.v > 0 && cell.v < 1) return Math.round(cell.v * 10000) / 100;
+    return cell.v;
+  }
+
+  return parseNumber(cell.v);
 }
 
 function parseNumber(val: unknown): number {
