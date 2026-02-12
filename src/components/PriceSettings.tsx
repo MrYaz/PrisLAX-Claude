@@ -4,9 +4,10 @@ interface Props {
   settings: PricingSettings;
   onChange: (settings: PricingSettings) => void;
   disabled: boolean;
+  hasSpecialPrices: boolean;
 }
 
-export function PriceSettings({ settings, onChange, disabled }: Props) {
+export function PriceSettings({ settings, onChange, disabled, hasSpecialPrices }: Props) {
   const update = (field: keyof PricingSettings, value: string) => {
     const num = parseFloat(value);
     onChange({ ...settings, [field]: isNaN(num) ? 0 : num });
@@ -60,6 +61,23 @@ export function PriceSettings({ settings, onChange, disabled }: Props) {
           className="block w-36 rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
         />
       </div>
+      {hasSpecialPrices && (
+        <div className="space-y-1">
+          <label htmlFor="specialPriceDiscount" className="block text-xs font-medium text-rose-600">
+            Avtalsrabatt (%)
+          </label>
+          <input
+            id="specialPriceDiscount"
+            type="number"
+            step="0.1"
+            value={settings.specialPriceDiscount || ''}
+            onChange={(e) => update('specialPriceDiscount', e.target.value)}
+            placeholder="0"
+            disabled={disabled}
+            className="block w-36 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm shadow-sm focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500 disabled:bg-slate-100"
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -18,6 +18,7 @@ const COLUMN_COLORS: Record<string, string> = {
   'Ord. pris': 'FFFDEBD0',
   'Rabatt %': 'FFFDEBD0',
   'Nettopris (SEK)': 'FFFDEBD0',
+  'Avtalsrabatt %': 'FFFDEBD0',
   // Physical — light purple
   'Vikt (kg)': 'FFE8DAEF',
   'Volym (m3)': 'FFE8DAEF',
@@ -38,6 +39,9 @@ const COLUMN_COLORS: Record<string, string> = {
   'Produktlänk': 'FFFADBD8',
 };
 
+/** Light pink row highlight for special price rows */
+const SPECIAL_PRICE_ROW_COLOR = 'FFFCE4EC';
+
 /**
  * Map PriceRow to array of cell values in OUTPUT_COLUMNS order.
  */
@@ -51,6 +55,7 @@ function rowToArray(row: PriceRow): (string | number)[] {
     numericOrEmpty(row.ordPris),
     row.rabattProcent ? Number(row.rabattProcent) : '',
     numericOrEmpty(row.nettoprisSEK),
+    row.avtalsrabattProcent ? Number(row.avtalsrabattProcent) : '',
     row.vikt,
     row.volym,
     row.hojd,
@@ -80,7 +85,8 @@ function numericOrEmpty(val: string): number | string {
  * Export price rows to a formatted .xlsx file.
  * - Bold header row with pastel colors per column category
  * - Correct Swedish characters (UTF-8)
- * - 23 columns in exact order
+ * - 24 columns in exact order
+ * - Special price rows highlighted in light pink
  */
 export async function exportToExcel(rows: PriceRow[], fileName: string): Promise<void> {
   const workbook = new ExcelJS.Workbook();
@@ -106,21 +112,35 @@ export async function exportToExcel(rows: PriceRow[], fileName: string): Promise
     cell.alignment = { vertical: 'middle' };
   });
 
-  // Add data rows with alternating tint for the same pastel groups
+  // Add data rows
   for (const row of rows) {
     const dataRow = sheet.addRow(rowToArray(row));
-    dataRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-      const colName = OUTPUT_COLUMNS[colNumber - 1];
-      const bgColor = COLUMN_COLORS[colName];
-      if (bgColor) {
-        // Lighter version for data rows (add more white)
+
+    if (row.hasSpecialPrice) {
+      // Entire row gets light pink background for special price rows
+      const totalCols = OUTPUT_COLUMNS.length;
+      for (let c = 1; c <= totalCols; c++) {
+        const cell = dataRow.getCell(c);
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: lightenColor(bgColor) },
+          fgColor: { argb: SPECIAL_PRICE_ROW_COLOR },
         };
       }
-    });
+    } else {
+      // Normal column-based pastel tint
+      dataRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+        const colName = OUTPUT_COLUMNS[colNumber - 1];
+        const bgColor = COLUMN_COLORS[colName];
+        if (bgColor) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: lightenColor(bgColor) },
+          };
+        }
+      });
+    }
   }
 
   // Auto-width columns

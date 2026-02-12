@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { PriceRow, PricingSettings, ProgressInfo, RawExtractedRow } from './types';
+import type { PriceRow, PricingSettings, ProgressInfo, RawExtractedRow, SpecialPriceData } from './types';
 import { loadBaseMappings } from './logic/articleMapping';
 import { processFile } from './services/fileRouter';
 import { postProcess } from './logic/postProcess';
@@ -8,6 +8,7 @@ import { buildExportFilename } from './utils/dateParser';
 import { getSupplierProfile } from './config/suppliers';
 import { FileUpload } from './components/FileUpload';
 import { MappingUpload } from './components/MappingUpload';
+import { SpecialPriceUpload } from './components/SpecialPriceUpload';
 import { SupplierSelect } from './components/SupplierSelect';
 import { PriceSettings } from './components/PriceSettings';
 import { ProgressBar } from './components/ProgressBar';
@@ -29,10 +30,12 @@ export default function App() {
   const [userMappingCount, setUserMappingCount] = useState(0);
   const [baseMappingLoaded, setBaseMappingLoaded] = useState(false);
   const [wasAborted, setWasAborted] = useState(false);
+  const [specialPriceData, setSpecialPriceData] = useState<SpecialPriceData | null>(null);
   const [pricingSettings, setPricingSettings] = useState<PricingSettings>({
     dealerDiscount: 0,
     priceAdjustment: 0,
     exchangeRate: 1,
+    specialPriceDiscount: 0,
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -63,6 +66,18 @@ export default function App() {
     setRows([]);
     setProgress(null);
     setWasAborted(false);
+  }, []);
+
+  const handleSpecialPriceDataChanged = useCallback((data: SpecialPriceData | null) => {
+    setSpecialPriceData(data);
+    if (!data) {
+      setPricingSettings((prev) => ({ ...prev, specialPriceDiscount: 0 }));
+    }
+  }, []);
+
+  const handleGeneralDiscountDetected = useCallback((discount: number) => {
+    // Auto-fill the special price discount with the general discount from the file
+    setPricingSettings((prev) => ({ ...prev, specialPriceDiscount: discount }));
   }, []);
 
   const handleConvert = useCallback(async () => {
@@ -110,19 +125,23 @@ export default function App() {
       total: 1,
     });
 
-    const finalRows = postProcess(rawRows, pricingSettings, effectiveSupplierName);
+    const finalRows = postProcess(rawRows, pricingSettings, effectiveSupplierName, specialPriceData);
 
     setRows(finalRows);
     setWasAborted(aborted);
+
+    const specialCount = finalRows.filter((r) => r.hasSpecialPrice).length;
+    const specialSuffix = specialCount > 0 ? ` (${specialCount} med avtalspris)` : '';
+
     setProgress({
       message: aborted
-        ? `Delvis extrahering — ${finalRows.length} rader (stoppad)`
-        : `Konvertering klar — ${finalRows.length} rader`,
+        ? `Delvis extrahering — ${finalRows.length} rader (stoppad)${specialSuffix}`
+        : `Konvertering klar — ${finalRows.length} rader${specialSuffix}`,
       current: 1,
       total: 1,
     });
     setProcessing(false);
-  }, [selectedFile, pricingSettings, supplierId, effectiveSupplierName]);
+  }, [selectedFile, pricingSettings, supplierId, effectiveSupplierName, specialPriceData]);
 
   const handleStop = useCallback(() => {
     if (abortControllerRef.current) {
@@ -184,6 +203,12 @@ export default function App() {
               hasMappings={userMappingCount > 0}
               onMappingsChanged={setUserMappingCount}
             />
+            <SpecialPriceUpload
+              data={specialPriceData}
+              onDataChanged={handleSpecialPriceDataChanged}
+              onGeneralDiscountDetected={handleGeneralDiscountDetected}
+              disabled={processing}
+            />
           </div>
 
           {!supplierId && !processing && (
@@ -220,6 +245,7 @@ export default function App() {
               settings={pricingSettings}
               onChange={setPricingSettings}
               disabled={processing}
+              hasSpecialPrices={specialPriceData !== null}
             />
           </div>
 

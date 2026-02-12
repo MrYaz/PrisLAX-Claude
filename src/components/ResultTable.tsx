@@ -16,6 +16,7 @@ function getCellValue(row: PriceRow, col: string): string {
     'Ord. pris': row.ordPris,
     'Rabatt %': row.rabattProcent,
     'Nettopris (SEK)': row.nettoprisSEK,
+    'Avtalsrabatt %': row.avtalsrabattProcent,
     'Vikt (kg)': row.vikt,
     'Volym (m3)': row.volym,
     'Höjd (mm)': row.hojd,
@@ -37,7 +38,7 @@ function getCellValue(row: PriceRow, col: string): string {
 
 /** Columns that should be right-aligned (numeric) */
 const NUMERIC_COLS = new Set([
-  'Ord. pris', 'Rabatt %', 'Nettopris (SEK)', 'Vikt (kg)', 'Volym (m3)',
+  'Ord. pris', 'Rabatt %', 'Nettopris (SEK)', 'Avtalsrabatt %', 'Vikt (kg)', 'Volym (m3)',
   'Höjd (mm)', 'Bredd (mm)', 'Djup (mm)', 'Diameter (mm)',
   'Helpall', 'Halvpall', 'Pallkostnad', 'Fast frakt (kr)', 'Leveranstid (dagar)',
 ]);
@@ -52,6 +53,7 @@ const HEADER_COLORS: Record<string, string> = {
   'Ord. pris': 'bg-orange-100',
   'Rabatt %': 'bg-orange-100',
   'Nettopris (SEK)': 'bg-orange-100',
+  'Avtalsrabatt %': 'bg-orange-100',
   'Vikt (kg)': 'bg-purple-100',
   'Volym (m3)': 'bg-purple-100',
   'Höjd (mm)': 'bg-purple-100',
@@ -72,10 +74,17 @@ const HEADER_COLORS: Record<string, string> = {
 export function ResultTable({ rows }: Props) {
   if (rows.length === 0) return null;
 
+  const specialCount = rows.filter((r) => r.hasSpecialPrice).length;
+
   return (
     <div>
       <p className="text-sm text-slate-500 mb-3">
         {rows.length} artikel{rows.length !== 1 ? 'rader' : 'rad'} extraherade
+        {specialCount > 0 && (
+          <span className="ml-2 text-rose-600">
+            ({specialCount} med avtalspris)
+          </span>
+        )}
       </p>
       <div className="overflow-x-auto rounded-lg border border-slate-200">
         <table className="w-full text-sm">
@@ -96,9 +105,11 @@ export function ResultTable({ rows }: Props) {
               <tr
                 key={i}
                 className={
-                  row.varugrupp === 'Tillbehör'
-                    ? 'bg-amber-50/50 hover:bg-amber-100/50'
-                    : 'hover:bg-slate-50'
+                  row.hasSpecialPrice
+                    ? 'bg-rose-50/60 hover:bg-rose-100/60'
+                    : row.varugrupp === 'Tillbehör'
+                      ? 'bg-amber-50/50 hover:bg-amber-100/50'
+                      : 'hover:bg-slate-50'
                 }
               >
                 {OUTPUT_COLUMNS.map((col) => (

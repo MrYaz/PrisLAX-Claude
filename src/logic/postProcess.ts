@@ -1,4 +1,4 @@
-import type { RawExtractedRow, PriceRow, PricingSettings } from '../types';
+import type { RawExtractedRow, PriceRow, PricingSettings, SpecialPriceData } from '../types';
 import { mergeAccessories } from './accessoryMerger';
 import { applyMappings } from './articleMapping';
 import { applyPricing } from './pricing';
@@ -11,12 +11,14 @@ import { applyPricing } from './pricing';
  * 2. Convert raw rows to PriceRow format
  * 3. Apply article number mapping
  * 4. Apply pricing calculations
- * 5. Clean up empty values
+ * 5. Apply special prices (if uploaded)
+ * 6. Clean up empty values
  */
 export function postProcess(
   rawRows: RawExtractedRow[],
   pricingSettings: PricingSettings,
-  supplierName: string
+  supplierName: string,
+  specialPrices?: SpecialPriceData | null
 ): PriceRow[] {
   // 1. Merge accessories
   const merged = mergeAccessories(rawRows);
@@ -31,6 +33,7 @@ export function postProcess(
     ordPris: '',
     rabattProcent: '',
     nettoprisSEK: raw.pris,
+    avtalsrabattProcent: '',
     vikt: raw.vikt,
     volym: calculateVolume(raw.hojd, raw.bredd, raw.djup),
     hojd: raw.hojd || '',
@@ -46,6 +49,7 @@ export function postProcess(
     ursprungsland: raw.ursprungsland || '',
     manualLank: raw.manualLank || '',
     produktLank: raw.produktLank || '',
+    hasSpecialPrice: false,
   }));
 
   // 3. Apply article number mappings (supplier-aware)
@@ -54,10 +58,65 @@ export function postProcess(
   // 4. Apply pricing
   rows = applyPricing(rows, pricingSettings);
 
-  // 5. Clean up
+  // 5. Apply special prices (override nettopris for matched articles)
+  if (specialPrices && specialPrices.entries.length > 0) {
+    rows = applySpecialPrices(rows, specialPrices, pricingSettings.specialPriceDiscount);
+  }
+
+  // 6. Clean up
   rows = rows.map(cleanRow);
 
   return rows;
+}
+
+/**
+ * Apply special prices to matching rows.
+ *
+ * For each row, check if its article number matches a special price entry.
+ * If so: override nettopris with the special price, apply optional discount,
+ * and mark the row.
+ */
+function applySpecialPrices(
+  rows: PriceRow[],
+  specialPrices: SpecialPriceData,
+  discountPct: number
+): PriceRow[] {
+  // Build a lookup map: normalized article number -> special price
+  const priceMap = new Map<string, number>();
+  for (const entry of specialPrices.entries) {
+    priceMap.set(normalizeArt(entry.artikelnr), entry.price);
+  }
+
+  return rows.map((row) => {
+    const key = normalizeArt(row.ertArtikelnr);
+    if (!key) return row;
+
+    const specialPrice = priceMap.get(key);
+    if (specialPrice === undefined) return row;
+
+    // Calculate discounted special price
+    const afterDiscount = discountPct > 0
+      ? specialPrice * (1 - discountPct / 100)
+      : specialPrice;
+
+    const finalPrice = Math.round(afterDiscount);
+
+    // ordPris shows the special list price (before our discount)
+    // nettopris shows the final price after discount
+    // avtalsrabattProcent shows the discount we applied
+    return {
+      ...row,
+      ordPris: row.ordPris || String(Math.round(specialPrice)),
+      nettoprisSEK: String(finalPrice),
+      avtalsrabattProcent: discountPct > 0 ? String(discountPct) : '',
+      hasSpecialPrice: true,
+    };
+  });
+}
+
+/** Normalize article number for matching: lowercase, no spaces, no trailing * */
+function normalizeArt(art: string): string {
+  return art.toLowerCase().replace(/\s+/g, '').replace(/\*+$/, '');
 }
 
 /**
@@ -100,6 +159,7 @@ function cleanRow(row: PriceRow): PriceRow {
     ordPris: clean(row.ordPris),
     rabattProcent: clean(row.rabattProcent),
     nettoprisSEK: clean(row.nettoprisSEK),
+    avtalsrabattProcent: clean(row.avtalsrabattProcent),
     vikt: clean(row.vikt),
     volym: clean(row.volym),
     hojd: clean(row.hojd),
@@ -115,5 +175,6 @@ function cleanRow(row: PriceRow): PriceRow {
     ursprungsland: clean(row.ursprungsland),
     manualLank: clean(row.manualLank),
     produktLank: clean(row.produktLank),
+    hasSpecialPrice: row.hasSpecialPrice,
   };
 }

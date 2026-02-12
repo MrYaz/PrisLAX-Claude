@@ -16,6 +16,8 @@ export interface PriceRow {
   rabattProcent: string;
   /** Net price in SEK */
   nettoprisSEK: string;
+  /** Discount from special price list (shown when hasSpecialPrice) */
+  avtalsrabattProcent: string;
   /** Weight in kg */
   vikt: string;
   /** Volume in cubic meters */
@@ -46,6 +48,8 @@ export interface PriceRow {
   manualLank: string;
   /** Link to product page */
   produktLank: string;
+  /** Whether this row was affected by the special price list (metadata, not a column) */
+  hasSpecialPrice: boolean;
 }
 
 /** Raw extracted row from AI – before post-processing */
@@ -84,6 +88,19 @@ export interface ArticleMapping {
   productName: string;
 }
 
+/** Special price entry from an uploaded contract/agreement price list */
+export interface SpecialPriceEntry {
+  artikelnr: string;
+  price: number;
+}
+
+/** Parsed data from a special price file */
+export interface SpecialPriceData {
+  entries: SpecialPriceEntry[];
+  /** General discount % for products NOT specifically listed */
+  generalDiscount: number;
+}
+
 /** Detailed extraction statistics for the status monitor */
 export interface ExtractionStats {
   articlesFound: number;
@@ -108,6 +125,8 @@ export interface PricingSettings {
   priceAdjustment: number;
   /** Currency exchange rate to SEK (1 if already SEK) */
   exchangeRate: number;
+  /** Discount applied to special price list articles (0-100) */
+  specialPriceDiscount: number;
 }
 
 /** Supported file types */
@@ -134,6 +153,7 @@ export const OUTPUT_COLUMNS = [
   'Ord. pris',
   'Rabatt %',
   'Nettopris (SEK)',
+  'Avtalsrabatt %',
   'Vikt (kg)',
   'Volym (m3)',
   'Höjd (mm)',
