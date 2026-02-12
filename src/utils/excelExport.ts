@@ -112,34 +112,34 @@ export async function exportToExcel(rows: PriceRow[], fileName: string): Promise
     cell.alignment = { vertical: 'middle' };
   });
 
+  // Find column index for Nettopris (SEK) — 1-based for ExcelJS
+  const nettoprisColIndex = OUTPUT_COLUMNS.indexOf('Nettopris (SEK)') + 1;
+
   // Add data rows
   for (const row of rows) {
     const dataRow = sheet.addRow(rowToArray(row));
 
-    if (row.hasSpecialPrice) {
-      // Entire row gets light pink background for special price rows
-      const totalCols = OUTPUT_COLUMNS.length;
-      for (let c = 1; c <= totalCols; c++) {
-        const cell = dataRow.getCell(c);
+    // Normal column-based pastel tint for all rows
+    dataRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      const colName = OUTPUT_COLUMNS[colNumber - 1];
+      const bgColor = COLUMN_COLORS[colName];
+      if (bgColor) {
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: SPECIAL_PRICE_ROW_COLOR },
+          fgColor: { argb: lightenColor(bgColor) },
         };
       }
-    } else {
-      // Normal column-based pastel tint
-      dataRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-        const colName = OUTPUT_COLUMNS[colNumber - 1];
-        const bgColor = COLUMN_COLORS[colName];
-        if (bgColor) {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: lightenColor(bgColor) },
-          };
-        }
-      });
+    });
+
+    // For special price rows: override Nettopris cell with pink
+    if (row.hasSpecialPrice && nettoprisColIndex > 0) {
+      const cell = dataRow.getCell(nettoprisColIndex);
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: SPECIAL_PRICE_ROW_COLOR },
+      };
     }
   }
 

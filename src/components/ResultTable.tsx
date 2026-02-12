@@ -105,21 +105,22 @@ export function ResultTable({ rows }: Props) {
               <tr
                 key={i}
                 className={
-                  row.hasSpecialPrice
-                    ? 'bg-rose-50/60 hover:bg-rose-100/60'
-                    : row.varugrupp === 'Tillbehör'
-                      ? 'bg-amber-50/50 hover:bg-amber-100/50'
-                      : 'hover:bg-slate-50'
+                  row.varugrupp === 'Tillbehör'
+                    ? 'bg-amber-50/50 hover:bg-amber-100/50'
+                    : 'hover:bg-slate-50'
                 }
               >
-                {OUTPUT_COLUMNS.map((col) => (
-                  <td
-                    key={col}
-                    className={`px-3 py-2 ${col === 'Benämning' || col === 'Kort beskrivning' ? '' : 'whitespace-nowrap'} ${NUMERIC_COLS.has(col) ? 'text-right tabular-nums' : ''}`}
-                  >
-                    {getCellValue(row, col)}
-                  </td>
-                ))}
+                {OUTPUT_COLUMNS.map((col) => {
+                  const isSpecialNettopris = row.hasSpecialPrice && col === 'Nettopris (SEK)';
+                  return (
+                    <td
+                      key={col}
+                      className={`px-3 py-2 ${col === 'Benämning' || col === 'Kort beskrivning' ? '' : 'whitespace-nowrap'} ${NUMERIC_COLS.has(col) ? 'text-right tabular-nums' : ''} ${isSpecialNettopris ? 'bg-rose-100 font-semibold text-rose-800' : ''}`}
+                    >
+                      {getCellValue(row, col)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
