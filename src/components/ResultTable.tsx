@@ -16,7 +16,6 @@ function getCellValue(row: PriceRow, col: string): string {
     'Ord. pris': row.ordPris,
     'Rabatt %': row.rabattProcent,
     'Nettopris (SEK)': row.nettoprisSEK,
-    'Avtalsrabatt %': row.avtalsrabattProcent,
     'Vikt (kg)': row.vikt,
     'Volym (m3)': row.volym,
     'Höjd (mm)': row.hojd,
@@ -38,7 +37,7 @@ function getCellValue(row: PriceRow, col: string): string {
 
 /** Columns that should be right-aligned (numeric) */
 const NUMERIC_COLS = new Set([
-  'Ord. pris', 'Rabatt %', 'Nettopris (SEK)', 'Avtalsrabatt %', 'Vikt (kg)', 'Volym (m3)',
+  'Ord. pris', 'Rabatt %', 'Nettopris (SEK)', 'Vikt (kg)', 'Volym (m3)',
   'Höjd (mm)', 'Bredd (mm)', 'Djup (mm)', 'Diameter (mm)',
   'Helpall', 'Halvpall', 'Pallkostnad', 'Fast frakt (kr)', 'Leveranstid (dagar)',
 ]);
@@ -53,7 +52,6 @@ const HEADER_COLORS: Record<string, string> = {
   'Ord. pris': 'bg-orange-100',
   'Rabatt %': 'bg-orange-100',
   'Nettopris (SEK)': 'bg-orange-100',
-  'Avtalsrabatt %': 'bg-orange-100',
   'Vikt (kg)': 'bg-purple-100',
   'Volym (m3)': 'bg-purple-100',
   'Höjd (mm)': 'bg-purple-100',

@@ -16,8 +16,6 @@ export interface PriceRow {
   rabattProcent: string;
   /** Net price in SEK */
   nettoprisSEK: string;
-  /** Discount from special price list (shown when hasSpecialPrice) */
-  avtalsrabattProcent: string;
   /** Weight in kg */
   vikt: string;
   /** Volume in cubic meters */
@@ -153,7 +151,6 @@ export const OUTPUT_COLUMNS = [
   'Ord. pris',
   'Rabatt %',
   'Nettopris (SEK)',
-  'Avtalsrabatt %',
   'Vikt (kg)',
   'Volym (m3)',
   'Höjd (mm)',

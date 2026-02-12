@@ -33,7 +33,6 @@ export function postProcess(
     ordPris: '',
     rabattProcent: '',
     nettoprisSEK: raw.pris,
-    avtalsrabattProcent: '',
     vikt: raw.vikt,
     volym: calculateVolume(raw.hojd, raw.bredd, raw.djup),
     hojd: raw.hojd || '',
@@ -103,12 +102,10 @@ function applySpecialPrices(
 
     // ordPris shows the special list price (before our discount)
     // nettopris shows the final price after discount
-    // avtalsrabattProcent shows the discount we applied
     return {
       ...row,
       ordPris: row.ordPris || String(Math.round(specialPrice)),
       nettoprisSEK: String(finalPrice),
-      avtalsrabattProcent: discountPct > 0 ? String(discountPct) : '',
       hasSpecialPrice: true,
     };
   });
@@ -159,7 +156,6 @@ function cleanRow(row: PriceRow): PriceRow {
     ordPris: clean(row.ordPris),
     rabattProcent: clean(row.rabattProcent),
     nettoprisSEK: clean(row.nettoprisSEK),
-    avtalsrabattProcent: clean(row.avtalsrabattProcent),
     vikt: clean(row.vikt),
     volym: clean(row.volym),
     hojd: clean(row.hojd),

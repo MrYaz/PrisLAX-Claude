@@ -18,7 +18,6 @@ const COLUMN_COLORS: Record<string, string> = {
   'Ord. pris': 'FFFDEBD0',
   'Rabatt %': 'FFFDEBD0',
   'Nettopris (SEK)': 'FFFDEBD0',
-  'Avtalsrabatt %': 'FFFDEBD0',
   // Physical — light purple
   'Vikt (kg)': 'FFE8DAEF',
   'Volym (m3)': 'FFE8DAEF',
@@ -55,7 +54,6 @@ function rowToArray(row: PriceRow): (string | number)[] {
     numericOrEmpty(row.ordPris),
     row.rabattProcent ? Number(row.rabattProcent) : '',
     numericOrEmpty(row.nettoprisSEK),
-    row.avtalsrabattProcent ? Number(row.avtalsrabattProcent) : '',
     row.vikt,
     row.volym,
     row.hojd,
