@@ -40,14 +40,15 @@ ACCESSORY ARTICLE NUMBERS:
 "Standard" CELLS — SKIP THEM:
 - If a matrix cell contains ONLY the word "Standard" (no price), it means that accessory is included by default with that main product. Do NOT extract it as a separate row. Skip that cell entirely.
 
-LOCK TYPE (LÅSNING) IN LEFTMOST COLUMN:
-- Some tables have a "Låsning" or lock type column as the LEFTMOST column (e.g., "Nyckellås", "Kodlås", "Elkodlås", "Nyckellås med vred", "Elektroniskt kodlås").
-- When the lock type appears at the far LEFT of the table header and data rows, it describes a VARIANT of the main product. It is NOT the product name itself.
-- In this case, APPEND the lock type at the END of benamning, separated by a comma.
-- Example: main product is "Säkerhetsskåp SA210" and the leftmost column says "Nyckellås" → benamning: "Säkerhetsskåp SA210, Nyckellås"
-- Example: main product is "Dokumentskåp DS200" and leftmost column says "Elkodlås" → benamning: "Dokumentskåp DS200, Elkodlås"
+LOCK TYPE (LÅSNING) IN MAIN PRODUCT TABLES ONLY:
+- Some MAIN PRODUCT tables (NOT accessory tables) have a "Låsning" column as the LEFTMOST column in the table header. The values in that column are lock types like "Nyckellås", "Kodlås", "Elkodlås", "Nyckellås med vred", "Elektroniskt kodlås".
+- This ONLY applies when the table header row explicitly has a column labelled "Låsning" or similar. It does NOT apply to accessory/tillbehör matrices where the left column is the accessory name.
+- When a main product table has a leftmost "Låsning" column, the lock type describes a VARIANT of the product. APPEND it at the END of benamning, separated by a comma.
+- Example: product is "Säkerhetsskåp SA210" and the Låsning column says "Nyckellås" → benamning: "Säkerhetsskåp SA210, Nyckellås"
+- Example: product is "Dokumentskåp DS200" and the Låsning column says "Elkodlås" → benamning: "Dokumentskåp DS200, Elkodlås"
 - Do NOT put the lock type first: "Nyckellås Säkerhetsskåp SA210" is WRONG.
 - Each lock type variant with its own price is a SEPARATE product row — extract every variant.
+- In ACCESSORY matrices, the left column is the accessory description — use it as-is for benamning. Do NOT move it to the end.
 
 FIND ALL ARTICLES — Be thorough:
 - Extract products from EVERY table on EVERY page. Do not skip any section.
